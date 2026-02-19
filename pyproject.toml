@@ -13,12 +13,12 @@ dependencies = [
     "uvicorn[standard]==0.34.0",
     "sqlmodel==0.0.21",
     "aiosqlite==0.20.0",
-    "python-telegram-bot[job-queue]>=20.0,<21.0",
+    "python-telegram-bot[job-queue]==21.10",
     "anthropic==0.77.0",
     "openai==1.65.4",
     "APScheduler==3.10.4",
     "pydantic-settings==2.8.1",
-    "httpx==0.28.1",
+    "httpx>=0.25.0,<1.0",
     "matplotlib==3.10.1",
 ]
 
