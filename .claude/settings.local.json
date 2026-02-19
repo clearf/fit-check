@@ -23,7 +23,11 @@
       "Bash(git remote set-url:*)",
       "Bash(git push:*)",
       "WebFetch(domain:developer.garmin.com)",
-      "WebFetch(domain:wiki.brianturchyn.net)"
+      "WebFetch(domain:wiki.brianturchyn.net)",
+      "Bash(/Volumes/Storage/Users/clearf/Documents/repos/fitness/.venv/bin/pip show:*)",
+      "Bash(/Volumes/Storage/Users/clearf/Documents/repos/fitness/.venv/bin/python:*)",
+      "Bash(unzip:*)",
+      "Bash(/Volumes/Storage/Users/clearf/Documents/repos/fitness/.venv/bin/python3:*)"
     ]
   }
 }

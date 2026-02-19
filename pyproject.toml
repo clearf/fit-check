@@ -7,7 +7,7 @@ name = "fitness"
 version = "0.1.0"
 requires-python = ">=3.9"
 dependencies = [
-    "garminconnect==0.1.55",  # last version supporting Python 3.9
+    "garminconnect==0.2.8",
     "fitparse>=1.2.0",
     "fastapi==0.115.8",
     "uvicorn[standard]==0.34.0",

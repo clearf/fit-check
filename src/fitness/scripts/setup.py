@@ -1,12 +1,12 @@
 """
 Interactive setup wizard for the fitness app.
 
-Prompts for Garmin credentials once, exchanges them for session cookies,
-and saves the cookies to ~/.fitness/garmin_session/ with owner-only
-permissions (0700 dir / 0600 file).
+Prompts for Garmin credentials once, exchanges them for OAuth tokens,
+and saves the tokens to ~/.fitness/garmin_session/ with owner-only
+permissions (0700 dir / 0600 files).
 
 After setup, the main app and all scripts connect to Garmin using the
-saved session — credentials are never stored on disk.
+saved tokens — credentials are never stored on disk.
 
 Usage:
     python -m fitness setup
@@ -25,7 +25,7 @@ def run_setup() -> None:
 
     print("\n🏃 Fitness App — Garmin Setup\n")
     print("Your credentials will NOT be saved to disk.")
-    print(f"Session cookies will be stored in: {auth._tokens_dir}\n")
+    print(f"OAuth tokens will be stored in: {auth._tokens_dir}\n")
 
     if auth.has_session():
         print("⚠️  An existing session was found.")
@@ -52,9 +52,8 @@ def run_setup() -> None:
         print("Check your email and password and try again.")
         sys.exit(1)
 
-    print(f"\n✅ Session saved to {auth._session_file}")
-    print(f"   Permissions: dir={oct(auth._tokens_dir.stat().st_mode)[-3:]}, "
-          f"file={oct(auth._session_file.stat().st_mode)[-3:]}")
+    print(f"\n✅ Tokens saved to {auth._tokens_dir}")
+    print(f"   Permissions: dir={oct(auth._tokens_dir.stat().st_mode)[-3:]}")
     print("\nYou won't need to enter your password again until the session expires.")
     print("If it does expire, just re-run:  python -m fitness setup\n")
 
