@@ -1,0 +1,12 @@
+{
+  "hrvSummary": {
+    "startTimestampGMT": "2025-01-15T00:00:00",
+    "endTimestampGMT": "2025-01-15T06:00:00",
+    "lastNight": 52.0,
+    "lastNight5MinHigh": 68.0,
+    "weeklyAvg": 58.0,
+    "status": "BALANCED",
+    "startTimestampLocal": "2025-01-14T16:00:00",
+    "endTimestampLocal": "2025-01-14T22:00:00"
+  }
+}

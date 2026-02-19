@@ -1,0 +1,62 @@
+[
+  {
+    "messageIndex": 0,
+    "splitType": "RUN",
+    "startTimeGMT": "2025-01-15T07:30:00",
+    "totalElapsedTime": 180.0,
+    "totalDistance": 400.0,
+    "averageHR": 152.0,
+    "averageSpeed": 2.222,
+    "startTime": 0.0
+  },
+  {
+    "messageIndex": 1,
+    "splitType": "WALK",
+    "startTimeGMT": "2025-01-15T07:33:00",
+    "totalElapsedTime": 60.0,
+    "totalDistance": 75.0,
+    "averageHR": 128.0,
+    "averageSpeed": 1.25,
+    "startTime": 180.0
+  },
+  {
+    "messageIndex": 2,
+    "splitType": "RUN",
+    "startTimeGMT": "2025-01-15T07:34:00",
+    "totalElapsedTime": 180.0,
+    "totalDistance": 400.0,
+    "averageHR": 155.0,
+    "averageSpeed": 2.222,
+    "startTime": 240.0
+  },
+  {
+    "messageIndex": 3,
+    "splitType": "WALK",
+    "startTimeGMT": "2025-01-15T07:37:00",
+    "totalElapsedTime": 60.0,
+    "totalDistance": 75.0,
+    "averageHR": 130.0,
+    "averageSpeed": 1.25,
+    "startTime": 420.0
+  },
+  {
+    "messageIndex": 4,
+    "splitType": "RUN",
+    "startTimeGMT": "2025-01-15T07:38:00",
+    "totalElapsedTime": 180.0,
+    "totalDistance": 400.0,
+    "averageHR": 157.0,
+    "averageSpeed": 2.222,
+    "startTime": 480.0
+  },
+  {
+    "messageIndex": 5,
+    "splitType": "WALK",
+    "startTimeGMT": "2025-01-15T07:41:00",
+    "totalElapsedTime": 60.0,
+    "totalDistance": 75.0,
+    "averageHR": 132.0,
+    "averageSpeed": 1.25,
+    "startTime": 660.0
+  }
+]

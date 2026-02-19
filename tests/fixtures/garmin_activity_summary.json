@@ -1,0 +1,26 @@
+{
+  "activityId": 17345678901,
+  "activityName": "Morning Run",
+  "activityType": {
+    "typeKey": "running",
+    "typeId": 1
+  },
+  "startTimeGMT": "2025-01-15 07:30:00",
+  "duration": 3614.0,
+  "distance": 8046.72,
+  "averageHR": 148.0,
+  "maxHR": 172.0,
+  "averageSpeed": 2.225,
+  "maxSpeed": 3.1,
+  "elevationGain": 85.0,
+  "elevationLoss": 82.0,
+  "averageRunningCadenceInStepsPerMinute": 162.0,
+  "trainingEffectLabel": "IMPROVING_FITNESS",
+  "aerobicTrainingEffect": 3.2,
+  "anaerobicTrainingEffect": 0.4,
+  "vO2MaxValue": 47.0,
+  "weatherTemperature": 14.0,
+  "weatherHumidity": 72,
+  "weatherWindSpeed": 8.0,
+  "weatherWindDirection": 270
+}

@@ -1,0 +1,225 @@
+"""Tests for Garmin API response normalizer."""
+import json
+from datetime import date, datetime
+from pathlib import Path
+
+import pytest
+
+from fitness.garmin.normalizer import (
+    normalize_activity_summary,
+    normalize_sleep,
+    normalize_hrv,
+    normalize_typed_split,
+)
+
+FIXTURES = Path(__file__).parent.parent / "fixtures"
+
+
+@pytest.fixture
+def activity_summary():
+    return json.loads((FIXTURES / "garmin_activity_summary.json").read_text())
+
+
+@pytest.fixture
+def sleep_data():
+    return json.loads((FIXTURES / "garmin_sleep.json").read_text())
+
+
+@pytest.fixture
+def hrv_data():
+    return json.loads((FIXTURES / "garmin_hrv.json").read_text())
+
+
+@pytest.fixture
+def typed_splits():
+    return json.loads((FIXTURES / "garmin_typed_splits.json").read_text())
+
+
+# ─── Activity summary normalizer ──────────────────────────────────────────────
+
+class TestNormalizeActivitySummary:
+    def test_returns_dict(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert isinstance(result, dict)
+
+    def test_garmin_activity_id_is_string(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["garmin_activity_id"] == "17345678901"
+
+    def test_name_extracted(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["name"] == "Morning Run"
+
+    def test_activity_type_extracted(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["activity_type"] == "running"
+
+    def test_start_time_is_datetime(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert isinstance(result["start_time_utc"], datetime)
+        assert result["start_time_utc"].year == 2025
+        assert result["start_time_utc"].hour == 7
+
+    def test_duration_seconds(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["duration_seconds"] == pytest.approx(3614.0)
+
+    def test_distance_meters(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["distance_meters"] == pytest.approx(8046.72)
+
+    def test_avg_hr(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["avg_hr"] == pytest.approx(148.0)
+
+    def test_max_hr(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["max_hr"] == pytest.approx(172.0)
+
+    def test_avg_pace_derived_from_speed(self, activity_summary):
+        # averageSpeed=2.225 m/s → pace = 1000/2.225 ≈ 449.4 s/km
+        result = normalize_activity_summary(activity_summary)
+        assert result["avg_pace_seconds_per_km"] == pytest.approx(449.4, abs=1.0)
+
+    def test_elevation_gain_and_loss(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["total_ascent_meters"] == pytest.approx(85.0)
+        assert result["total_descent_meters"] == pytest.approx(82.0)
+
+    def test_training_effect(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["training_effect_aerobic"] == pytest.approx(3.2)
+        assert result["training_effect_anaerobic"] == pytest.approx(0.4)
+
+    def test_vo2max(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["vo2max_estimated"] == pytest.approx(47.0)
+
+    def test_weather_temp(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        assert result["weather_temp_c"] == pytest.approx(14.0)
+
+    def test_raw_summary_json_stored(self, activity_summary):
+        result = normalize_activity_summary(activity_summary)
+        stored = json.loads(result["raw_summary_json"])
+        assert stored["activityId"] == activity_summary["activityId"]
+
+    def test_missing_optional_fields_are_none(self):
+        minimal = {
+            "activityId": 999,
+            "activityName": "Run",
+            "activityType": {"typeKey": "running"},
+            "startTimeGMT": "2025-06-01 08:00:00",
+            "duration": 1800.0,
+            "distance": 5000.0,
+        }
+        result = normalize_activity_summary(minimal)
+        assert result["avg_hr"] is None
+        assert result["vo2max_estimated"] is None
+        assert result["training_effect_aerobic"] is None
+        assert result["weather_temp_c"] is None
+
+
+# ─── Sleep normalizer ──────────────────────────────────────────────────────────
+
+class TestNormalizeSleep:
+    def test_returns_dict(self, sleep_data):
+        result = normalize_sleep(sleep_data)
+        assert isinstance(result, dict)
+
+    def test_sleep_date_is_date(self, sleep_data):
+        result = normalize_sleep(sleep_data)
+        assert isinstance(result["sleep_date"], date)
+        assert result["sleep_date"] == date(2025, 1, 15)
+
+    def test_duration_seconds(self, sleep_data):
+        result = normalize_sleep(sleep_data)
+        assert result["duration_seconds"] == 24000
+
+    def test_sleep_stages(self, sleep_data):
+        result = normalize_sleep(sleep_data)
+        assert result["deep_sleep_seconds"] == 4200
+        assert result["light_sleep_seconds"] == 10800
+        assert result["rem_sleep_seconds"] == 7200
+        assert result["awake_seconds"] == 1800
+
+    def test_sleep_score(self, sleep_data):
+        result = normalize_sleep(sleep_data)
+        assert result["sleep_score"] == 71
+
+    def test_avg_spo2(self, sleep_data):
+        result = normalize_sleep(sleep_data)
+        assert result["avg_spo2"] == pytest.approx(96.5)
+
+    def test_raw_json_stored(self, sleep_data):
+        result = normalize_sleep(sleep_data)
+        assert result["raw_json"] is not None
+        stored = json.loads(result["raw_json"])
+        assert "dailySleepDTO" in stored
+
+
+# ─── HRV normalizer ───────────────────────────────────────────────────────────
+
+class TestNormalizeHRV:
+    def test_returns_dict(self, hrv_data):
+        result = normalize_hrv(hrv_data)
+        assert isinstance(result, dict)
+
+    def test_record_date(self, hrv_data):
+        result = normalize_hrv(hrv_data)
+        assert isinstance(result["record_date"], date)
+        assert result["record_date"] == date(2025, 1, 15)
+
+    def test_weekly_avg_hrv(self, hrv_data):
+        result = normalize_hrv(hrv_data)
+        assert result["weekly_avg_hrv"] == pytest.approx(58.0)
+
+    def test_last_night_hrv(self, hrv_data):
+        result = normalize_hrv(hrv_data)
+        assert result["last_night_avg_hrv"] == pytest.approx(52.0)
+
+    def test_status(self, hrv_data):
+        result = normalize_hrv(hrv_data)
+        assert result["status"] == "BALANCED"
+
+    def test_raw_json_stored(self, hrv_data):
+        result = normalize_hrv(hrv_data)
+        assert result["raw_json"] is not None
+
+
+# ─── Typed split normalizer ───────────────────────────────────────────────────
+
+class TestNormalizeTypedSplit:
+    def test_run_split_type(self, typed_splits):
+        result = normalize_typed_split(typed_splits[0], split_index=0)
+        assert result["split_type"] == "run_segment"
+
+    def test_walk_split_type(self, typed_splits):
+        result = normalize_typed_split(typed_splits[1], split_index=1)
+        assert result["split_type"] == "walk_segment"
+
+    def test_split_index(self, typed_splits):
+        result = normalize_typed_split(typed_splits[0], split_index=0)
+        assert result["split_index"] == 0
+
+    def test_duration_seconds(self, typed_splits):
+        result = normalize_typed_split(typed_splits[0], split_index=0)
+        assert result["duration_seconds"] == pytest.approx(180.0)
+
+    def test_distance_meters(self, typed_splits):
+        result = normalize_typed_split(typed_splits[0], split_index=0)
+        assert result["distance_meters"] == pytest.approx(400.0)
+
+    def test_avg_hr(self, typed_splits):
+        result = normalize_typed_split(typed_splits[0], split_index=0)
+        assert result["avg_hr"] == pytest.approx(152.0)
+
+    def test_avg_pace_derived_from_speed(self, typed_splits):
+        # averageSpeed=2.222 m/s → pace ≈ 450.0 s/km
+        result = normalize_typed_split(typed_splits[0], split_index=0)
+        assert result["avg_pace_seconds_per_km"] == pytest.approx(450.0, abs=1.0)
+
+    def test_start_elapsed_seconds(self, typed_splits):
+        # startTime for second RUN segment is 240.0
+        result = normalize_typed_split(typed_splits[2], split_index=2)
+        assert result["start_elapsed_seconds"] == 240

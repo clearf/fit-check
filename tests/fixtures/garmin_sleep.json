@@ -1,0 +1,19 @@
+{
+  "dailySleepDTO": {
+    "calendarDate": "2025-01-15",
+    "sleepStartTimestampGMT": 1736908800000,
+    "sleepEndTimestampGMT": 1736935200000,
+    "sleepTimeSeconds": 24000,
+    "deepSleepSeconds": 4200,
+    "lightSleepSeconds": 10800,
+    "remSleepSeconds": 7200,
+    "awakeSleepSeconds": 1800,
+    "averageSpO2Value": 96.5,
+    "averageRespirationValue": 14.2,
+    "sleepScores": {
+      "overall": {
+        "value": 71
+      }
+    }
+  }
+}
