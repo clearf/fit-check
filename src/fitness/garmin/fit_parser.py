@@ -10,7 +10,10 @@ Field mapping from FIT to our schema:
   heart_rate            → heart_rate (bpm, int)
   enhanced_speed        → speed_ms (m/s, float) + pace_seconds_per_km (derived)
   enhanced_altitude     → elevation_meters (float)
-  cadence               → cadence_spm (steps/min, int)
+  cadence               → cadence_spm (steps/min, int) — NOTE: FIT 'cadence' is
+                          strides/min (one foot); we double it and add
+                          fractional_cadence to get full steps/min.
+                          e.g. cadence=82, fractional_cadence=0.5 → 165 spm
   distance              → distance_meters (cumulative, float)
   position_lat          → lat (degrees, converted from semicircles)
   position_long         → lon (degrees, converted from semicircles)
@@ -105,11 +108,13 @@ def parse_fit_file(path: Path) -> List[Dict[str, Any]]:
         if raw_hr is not None:
             heart_rate = int(raw_hr)
 
-        # Cadence (Forerunner 245 reports running cadence directly in steps/min)
+        # Cadence: FIT 'cadence' field is strides/min (one foot).
+        # Full steps/min = (cadence + fractional_cadence) * 2
         cadence_spm: Optional[int] = None
         raw_cad = values.get("cadence")
         if raw_cad is not None:
-            cadence_spm = int(raw_cad)
+            frac = values.get("fractional_cadence") or 0.0
+            cadence_spm = round((float(raw_cad) + float(frac)) * 2)
 
         # Cumulative distance
         distance_meters: Optional[float] = None

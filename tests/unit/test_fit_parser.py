@@ -114,7 +114,12 @@ class TestFitParserCoordinates:
 
 class TestFitParserCadence:
     def test_cadence_values_realistic_for_running(self, parsed_datapoints):
-        """Running cadence: 130-200 spm is realistic. 0 during walk breaks is ok."""
+        """
+        cadence_spm is full steps/min (both feet) after doubling the FIT
+        'cadence' field (which is strides/min, one foot).
+        Galloway walk-break cadence can be as low as ~80 spm; running is
+        typically 140-200 spm.  We accept 60-240 to cover both phases.
+        """
         cad_points = [
             pt for pt in parsed_datapoints
             if pt.get("cadence_spm") is not None and pt["cadence_spm"] > 0
@@ -122,7 +127,7 @@ class TestFitParserCadence:
         if len(cad_points) == 0:
             pytest.skip("No cadence data in this FIT file")
         for pt in cad_points:
-            assert 100 <= pt["cadence_spm"] <= 230, (
+            assert 60 <= pt["cadence_spm"] <= 240, (
                 f"Cadence {pt['cadence_spm']} spm out of realistic range"
             )
 
