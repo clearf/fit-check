@@ -1,0 +1,19 @@
+.env
+.venv/
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.garmin_tokens.json
+*.fit
+# Keep sample fixture FIT file
+!tests/fixtures/sample_activity.fit
