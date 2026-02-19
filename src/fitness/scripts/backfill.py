@@ -25,18 +25,16 @@ SLEEP_BETWEEN_CHUNKS = 5.0
 
 
 async def _backfill(days: int) -> None:
-    from fitness.config import get_settings
     from fitness.db.engine import get_engine
     from fitness.garmin.client import GarminClient
     from fitness.garmin.sync_service import GarminSyncService
     from sqlmodel import Session, select
     from fitness.models.activity import Activity
 
-    settings = get_settings()
     engine = get_engine()
 
-    logger.info("Connecting to Garmin...")
-    client = GarminClient(settings.garmin_email, settings.garmin_password)
+    logger.info("Connecting to Garmin (loading saved session)...")
+    client = GarminClient()  # loads session from ~/.fitness/garmin_session/
     await client.connect()
     service = GarminSyncService(client=client, engine=engine)
 

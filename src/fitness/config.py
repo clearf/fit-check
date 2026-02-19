@@ -4,6 +4,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # Garmin credentials are NOT stored here at runtime.
+    # Authentication uses session cookies saved by `python -m fitness setup`.
+    # These fields are kept only for the setup wizard and backfill script
+    # that accept credentials interactively; they default to empty.
     garmin_email: str = ""
     garmin_password: str = ""
     telegram_bot_token: str = ""

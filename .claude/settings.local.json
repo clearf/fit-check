@@ -21,7 +21,9 @@
       "Bash(ls:*)",
       "Bash(ssh:*)",
       "Bash(git remote set-url:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "WebFetch(domain:developer.garmin.com)",
+      "WebFetch(domain:wiki.brianturchyn.net)"
     ]
   }
 }

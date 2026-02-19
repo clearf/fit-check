@@ -9,7 +9,6 @@ from sqlmodel import Session, select
 from fitness.db.engine import get_engine, get_session
 from fitness.garmin.client import GarminClient
 from fitness.garmin.sync_service import GarminSyncService
-from fitness.config import get_settings
 from fitness.models.activity import Activity
 from fitness.models.sync import SyncLog
 
@@ -29,10 +28,9 @@ class SyncStatusResponse(BaseModel):
 
 
 async def _do_sync(activity_id: Optional[str] = None) -> None:
-    """Background task: authenticate and sync."""
-    settings = get_settings()
+    """Background task: load saved session and sync."""
     engine = get_engine()
-    client = GarminClient(settings.garmin_email, settings.garmin_password)
+    client = GarminClient()  # loads session from ~/.fitness/garmin_session/
     await client.connect()
     service = GarminSyncService(client=client, engine=engine)
 

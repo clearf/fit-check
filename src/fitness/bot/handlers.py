@@ -196,15 +196,13 @@ async def _send_run_debrief(
 
 async def _trigger_sync_background(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Background coroutine to sync Garmin — called from /sync handler."""
-    from fitness.config import get_settings
     from fitness.garmin.client import GarminClient
     from fitness.garmin.sync_service import GarminSyncService
 
     engine = context.bot_data["engine"]
-    settings = get_settings()
 
     try:
-        client = GarminClient(settings.garmin_email, settings.garmin_password)
+        client = GarminClient()  # loads session from ~/.fitness/garmin_session/
         await client.connect()
         service = GarminSyncService(client=client, engine=engine)
 

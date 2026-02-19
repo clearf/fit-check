@@ -56,7 +56,7 @@ async def _nightly_sync(engine) -> None:
     logger.info("Nightly sync starting at %s", datetime.utcnow().isoformat())
 
     try:
-        client = GarminClient(settings.garmin_email, settings.garmin_password)
+        client = GarminClient()  # loads session from ~/.fitness/garmin_session/
         await client.connect()
         service = GarminSyncService(client=client, engine=engine)
 

@@ -3,34 +3,51 @@ Async wrapper around the garminconnect library.
 
 garminconnect is synchronous; we run it in a thread pool executor so it
 doesn't block the asyncio event loop.
+
+Authentication is handled via GarminAuth (session cookies on disk).
+Credentials are never stored in config or env — only the session cookies.
 """
 import asyncio
 import tempfile
-from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import garminconnect
 
+from fitness.garmin.auth import GarminAuth, NoSessionError, SessionExpiredError
 from fitness.garmin.fit_parser import parse_fit_file
 
 
 class GarminClient:
-    """Thin async wrapper over garminconnect.Garmin."""
+    """
+    Thin async wrapper over garminconnect.Garmin.
 
-    def __init__(self, email: str, password: str):
-        self._email = email
-        self._password = password
-        self._api: garminconnect.Garmin = None
+    Call connect() before any data methods. connect() loads the saved session
+    from disk via GarminAuth — no credentials are required at runtime.
+    """
+
+    def __init__(self, auth: Optional[GarminAuth] = None):
+        """
+        Args:
+            auth: GarminAuth instance. Defaults to GarminAuth() which reads
+                  from ~/.fitness/garmin_session/.
+        """
+        self._auth = auth or GarminAuth()
+        self._api: Optional[garminconnect.Garmin] = None
 
     async def connect(self) -> None:
-        """Authenticate with Garmin Connect."""
+        """
+        Load saved session from disk and validate it with Garmin's servers.
+
+        Raises:
+            NoSessionError: if `python -m fitness setup` has not been run.
+            SessionExpiredError: if the session has expired (re-run setup).
+        """
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self._connect_sync)
 
     def _connect_sync(self) -> None:
-        self._api = garminconnect.Garmin(self._email, self._password)
-        self._api.login()
+        self._api = self._auth.build_client()
 
     async def _run(self, fn, *args, **kwargs):
         """Run a sync garminconnect call in the thread pool."""
@@ -76,10 +93,8 @@ class GarminClient:
 
         Downloads to a temp file, parses with fitparse, then deletes the temp file.
         """
-        # Download FIT binary
         fit_data = await self._run(self._api.download_activity, activity_id)
 
-        # Write to temp file and parse
         with tempfile.NamedTemporaryFile(suffix=".fit", delete=False) as f:
             tmp_path = Path(f.name)
             f.write(fit_data)
