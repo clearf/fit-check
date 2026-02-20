@@ -68,6 +68,7 @@ async def _run_bot() -> None:
         engine=engine,
         claude=claude,
         whisper=whisper,
+        owner_chat_id=settings.telegram_allowed_user_id,
     )
 
     logger.info("Starting Telegram bot...")

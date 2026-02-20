@@ -9,12 +9,16 @@ Bot data keys (set in build_bot_app):
 """
 import asyncio
 import io
+import logging
+import traceback
 from typing import Optional
 
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 from sqlmodel import Session, select
+
+logger = logging.getLogger(__name__)
 
 from fitness.analysis.run_report import RunReport, build_run_report
 from fitness.models.activity import Activity
@@ -200,6 +204,7 @@ async def _trigger_sync_background(context: ContextTypes.DEFAULT_TYPE) -> None:
     from fitness.garmin.sync_service import GarminSyncService
 
     engine = context.bot_data["engine"]
+    chat_id = context.bot_data.get("owner_chat_id")
 
     try:
         client = GarminClient()  # loads session from ~/.fitness/garmin_session/
@@ -209,7 +214,34 @@ async def _trigger_sync_background(context: ContextTypes.DEFAULT_TYPE) -> None:
         activities = await client.get_activities(start=0, limit=1)
         if activities:
             gid = str(activities[0].get("activityId", ""))
-            activity = await service.sync_activity(gid)
-            # Notify user when done (if we have chat context — best effort)
+            await service.sync_activity(gid)
+            if chat_id:
+                await context.bot.send_message(chat_id=chat_id, text="✅ Sync complete!")
+        else:
+            if chat_id:
+                await context.bot.send_message(chat_id=chat_id, text="No new activities found on Garmin.")
     except Exception as exc:
-        pass  # Errors are logged in SyncLog; don't crash the bot
+        logger.exception("Garmin sync failed")
+        if chat_id:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"❌ Sync failed: {exc}",
+            )
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Global PTB error handler — logs the exception and notifies the owner."""
+    logger.exception("Unhandled exception", exc_info=context.error)
+
+    chat_id = context.bot_data.get("owner_chat_id")
+    if not chat_id:
+        return
+
+    tb = "".join(traceback.format_exception(type(context.error), context.error, context.error.__traceback__))
+    # Telegram message limit is 4096 chars
+    short_tb = tb[-3000:] if len(tb) > 3000 else tb
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"⚠️ Unhandled error:\n<pre>{short_tb}</pre>",
+        parse_mode="HTML",
+    )

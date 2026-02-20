@@ -17,6 +17,7 @@ from fitness.bot.handlers import (
     handle_trends,
     handle_sync,
     handle_text_message,
+    error_handler,
 )
 from fitness.bot.voice_handler import handle_voice
 
@@ -26,6 +27,7 @@ def build_bot_app(
     engine,
     claude,
     whisper=None,
+    owner_chat_id: int = None,
 ) -> Application:
     """
     Build and return the PTB Application.
@@ -35,6 +37,7 @@ def build_bot_app(
         engine: SQLAlchemy engine (SQLModel).
         claude: ClaudeClient instance.
         whisper: WhisperClient instance (optional — voice disabled if None).
+        owner_chat_id: Telegram chat ID to send error notifications to.
 
     Returns:
         Configured Application (not yet started).
@@ -45,6 +48,7 @@ def build_bot_app(
     app.bot_data["engine"] = engine
     app.bot_data["claude"] = claude
     app.bot_data["whisper"] = whisper
+    app.bot_data["owner_chat_id"] = owner_chat_id
 
     # Command handlers
     app.add_handler(CommandHandler("lastrun", handle_lastrun))
@@ -59,5 +63,8 @@ def build_bot_app(
     app.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message)
     )
+
+    # Global error handler — sends tracebacks to owner via Telegram
+    app.add_error_handler(error_handler)
 
     return app
