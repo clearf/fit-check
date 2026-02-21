@@ -9,13 +9,23 @@ changes vs 0.1.x:
   - get_activities(activitytype=) → kwarg removed; filter client-side
   - download_activity()       → default format is TCX; must pass ORIGINAL for FIT
 """
+import io
 import pytest
+import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 
 import garminconnect
 
 from fitness.garmin.client import GarminClient
+
+
+def _make_zip(fit_bytes: bytes, filename: str = "activity_12345.fit") -> bytes:
+    """Build an in-memory zip containing one .fit file, as Garmin's ORIGINAL download returns."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(filename, fit_bytes)
+    return buf.getvalue()
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -44,8 +54,9 @@ FAKE_SPLITS = {
 FAKE_SLEEP = {"dailySleepDTO": {"sleepStartTimestampLocal": 1700000000}}
 FAKE_HRV = {"hrvSummary": {"lastNight": 55}}
 
-# Minimal valid FIT file bytes (just enough to not be empty)
-FAKE_FIT_BYTES = b"FIT_FILE_CONTENT"
+# Garmin's ORIGINAL download returns a zip archive containing the .fit file, not raw FIT bytes.
+# FAKE_FIT_BYTES is therefore a zip; all get_fit_datapoints tests must use this.
+FAKE_FIT_BYTES = _make_zip(b"FIT_CONTENT_PLACEHOLDER")
 
 
 @pytest.fixture
@@ -281,3 +292,44 @@ class TestGetFitDatapoints:
         with patch("fitness.garmin.client.parse_fit_file", return_value=[]):
             result = await connected_client.get_fit_datapoints("12345")
         assert isinstance(result, list)
+
+    async def test_unzips_before_writing_fit_file(self, connected_client, mock_api):
+        """Regression: ORIGINAL download returns a zip, not raw FIT bytes.
+
+        parse_fit_file must receive the extracted .fit content, not the zip bytes.
+        Without the unzip step this raises: FitParseError: Invalid .FIT File Header.
+        """
+        sentinel_fit_bytes = b"\x0eFIT_SENTINEL_CONTENT_XYZZY"
+        mock_api.download_activity.return_value = _make_zip(sentinel_fit_bytes)
+
+        written_bytes = []
+
+        def capture_written(path: Path):
+            written_bytes.append(path.read_bytes())
+            return []
+
+        with patch("fitness.garmin.client.parse_fit_file", side_effect=capture_written):
+            await connected_client.get_fit_datapoints("12345")
+
+        assert len(written_bytes) == 1
+        assert written_bytes[0] == sentinel_fit_bytes, (
+            "parse_fit_file received zip bytes instead of extracted .fit content — "
+            "unzip step is missing or broken"
+        )
+
+    async def test_raises_if_zip_has_no_fit_file(self, connected_client, mock_api):
+        """If the zip contains no .fit member, a clear ValueError is raised."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("notes.txt", b"no fit here")
+        mock_api.download_activity.return_value = buf.getvalue()
+
+        with pytest.raises(ValueError, match="No .fit file found"):
+            await connected_client.get_fit_datapoints("12345")
+
+    async def test_raises_if_download_is_not_a_zip(self, connected_client, mock_api):
+        """If Garmin returns non-zip bytes (e.g. TCX XML), a clear error is raised."""
+        mock_api.download_activity.return_value = b"<TrainingCenterDatabase>...</TrainingCenterDatabase>"
+
+        with pytest.raises(Exception):
+            await connected_client.get_fit_datapoints("12345")

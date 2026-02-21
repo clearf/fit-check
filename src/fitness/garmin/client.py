@@ -8,7 +8,9 @@ Authentication is handled via GarminAuth (session cookies on disk).
 Credentials are never stored in config or env — only the session cookies.
 """
 import asyncio
+import io
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -113,18 +115,32 @@ class GarminClient:
         """
         Download the FIT file for an activity and parse it into datapoint dicts.
 
+        garminconnect's ORIGINAL format returns a zip archive containing a .fit
+        file (not raw FIT bytes). We unzip in memory to extract the .fit content
+        before writing to disk and parsing.
+
         Downloads to a temp file, parses with fitparse, then deletes the temp file.
         """
         # Must explicitly pass ORIGINAL format — the default is TCX, which is not a FIT file.
-        fit_data = await self._run(
+        zip_data = await self._run(
             self._api.download_activity,
             activity_id,
             dl_fmt=garminconnect.Garmin.ActivityDownloadFormat.ORIGINAL,
         )
 
+        # ORIGINAL returns a zip archive; extract the first .fit member.
+        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+            fit_names = [n for n in zf.namelist() if n.lower().endswith(".fit")]
+            if not fit_names:
+                raise ValueError(
+                    f"No .fit file found in ORIGINAL download for activity {activity_id}. "
+                    f"Zip members: {zf.namelist()}"
+                )
+            fit_bytes = zf.read(fit_names[0])
+
         with tempfile.NamedTemporaryFile(suffix=".fit", delete=False) as f:
             tmp_path = Path(f.name)
-            f.write(fit_data)
+            f.write(fit_bytes)
 
         try:
             datapoints = parse_fit_file(tmp_path)
