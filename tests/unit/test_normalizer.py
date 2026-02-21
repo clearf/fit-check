@@ -119,6 +119,51 @@ class TestNormalizeActivitySummary:
         assert result["training_effect_aerobic"] is None
         assert result["weather_temp_c"] is None
 
+    def test_start_time_from_startTimeLocal_when_startTimeGMT_absent(self):
+        """get_activity_evaluation() returns startTimeLocal, not startTimeGMT.
+
+        The normalizer must handle both key names so that both get_activities()
+        list items (startTimeGMT) and get_activity_evaluation() detail objects
+        (startTimeLocal) can be normalised without KeyError.
+        """
+        raw = {
+            "activityId": 999,
+            "activityName": "Evening Run",
+            "activityType": {"typeKey": "running"},
+            "startTimeLocal": "2025-06-01 20:00:00",  # key from evaluation endpoint
+            "duration": 1800.0,
+            "distance": 5000.0,
+        }
+        result = normalize_activity_summary(raw)
+        assert isinstance(result["start_time_utc"], datetime)
+        assert result["start_time_utc"].hour == 20
+
+    def test_start_time_prefers_startTimeGMT_over_startTimeLocal(self):
+        """When both keys exist, startTimeGMT (true UTC) takes precedence."""
+        raw = {
+            "activityId": 999,
+            "activityName": "Morning Run",
+            "activityType": {"typeKey": "running"},
+            "startTimeGMT": "2025-06-01 07:00:00",
+            "startTimeLocal": "2025-06-01 09:00:00",  # local offset, should be ignored
+            "duration": 1800.0,
+            "distance": 5000.0,
+        }
+        result = normalize_activity_summary(raw)
+        assert result["start_time_utc"].hour == 7
+
+    def test_raises_key_error_when_neither_start_time_key_present(self):
+        """Confirm a clear error when the response has no recognisable time field."""
+        raw = {
+            "activityId": 999,
+            "activityName": "Run",
+            "activityType": {"typeKey": "running"},
+            "duration": 1800.0,
+            "distance": 5000.0,
+        }
+        with pytest.raises(KeyError):
+            normalize_activity_summary(raw)
+
 
 # ─── Sleep normalizer ──────────────────────────────────────────────────────────
 

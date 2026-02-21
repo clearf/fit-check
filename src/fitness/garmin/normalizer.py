@@ -50,7 +50,11 @@ def normalize_activity_summary(raw: Dict[str, Any]) -> Dict[str, Any]:
         "garmin_activity_id": str(raw["activityId"]),
         "name": raw.get("activityName", ""),
         "activity_type": type_key,
-        "start_time_utc": _parse_garmin_datetime(raw["startTimeGMT"]),
+        # get_activities() list items use "startTimeGMT"; get_activity_evaluation()
+        # detail objects use "startTimeLocal". Prefer GMT (true UTC) when present.
+        "start_time_utc": _parse_garmin_datetime(
+            raw.get("startTimeGMT") or raw["startTimeLocal"]
+        ),
         "duration_seconds": float(raw["duration"]),
         "distance_meters": float(raw["distance"]),
         "avg_hr": raw.get("averageHR"),
