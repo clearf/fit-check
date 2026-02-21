@@ -102,14 +102,16 @@ class TestGarminSyncService:
         with Session(engine) as s:
             activity = s.exec(select(Activity)).first()
         assert activity is not None
-        assert activity.garmin_activity_id == "17345678901"
+        # garmin_activity_id comes from the fixture response (activityId field),
+        # not the argument passed to sync_activity.
+        assert activity.garmin_activity_id == "10000000001"
 
     @pytest.mark.asyncio
     async def test_sync_activity_name(self, service, engine):
         await service.sync_activity("17345678901")
         with Session(engine) as s:
             activity = s.exec(select(Activity)).first()
-        assert activity.name == "Morning Run"
+        assert activity.name == "Seattle - Speed Repeats"
 
     @pytest.mark.asyncio
     async def test_sync_creates_datapoints(self, service, engine):
@@ -172,7 +174,8 @@ class TestGarminSyncService:
         await service.sync_activity("17345678901")
         with Session(engine) as s:
             activity = s.exec(select(Activity)).first()
-        assert activity.avg_hr == pytest.approx(148.0)
+        # avg_hr comes from summaryDTO.averageHR in the real fixture
+        assert activity.avg_hr == pytest.approx(133.0)
 
     @pytest.mark.asyncio
     async def test_sync_error_logs_failure(self, engine):
