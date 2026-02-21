@@ -80,12 +80,28 @@ class GarminClient:
         self,
         start: int = 0,
         limit: int = 20,
-        activity_type: str = "running",
+        activity_type: Optional[str] = "running",
     ) -> List[Dict[str, Any]]:
-        """Fetch a page of activities."""
-        return await self._run(
-            self._api.get_activities, start, limit, activitytype=activity_type
+        """Fetch a page of activities, optionally filtered by activity type.
+
+        Note: garminconnect >= 0.2.x removed the activitytype kwarg from
+        get_activities(). We filter client-side instead.
+
+        Args:
+            start: Pagination offset.
+            limit: Max number of activities to fetch from the API.
+            activity_type: If given, only return activities whose typeKey
+                matches this string (e.g. "running"). Pass None to return all.
+        """
+        activities: List[Dict[str, Any]] = await self._run(
+            self._api.get_activities, start, limit
         )
+        if activity_type is None:
+            return activities
+        return [
+            a for a in activities
+            if a.get("activityType", {}).get("typeKey") == activity_type
+        ]
 
     async def get_fit_datapoints(self, activity_id: str) -> List[Dict[str, Any]]:
         """
