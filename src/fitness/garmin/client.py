@@ -55,18 +55,24 @@ class GarminClient:
         return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
 
     async def get_activity_summary(self, activity_id: str) -> Dict[str, Any]:
-        """Fetch activity summary dict from Garmin Connect API."""
-        return await self._run(self._api.get_activity, activity_id)
+        """Fetch activity summary dict from Garmin Connect API.
+
+        Note: garminconnect 0.2.x removed get_activity(); use get_activity_evaluation().
+        """
+        return await self._run(self._api.get_activity_evaluation, activity_id)
 
     async def get_activity_typed_splits(self, activity_id: str) -> List[Dict]:
-        """Fetch typed splits (run/walk segments) for a Galloway run."""
-        result = await self._run(
-            self._api.get_activity_typed_splits, activity_id
-        )
-        # API returns {"activityId": ..., "typeIDs": [...]} or list directly
+        """Fetch splits for an activity (used for Galloway run/walk detection).
+
+        Note: garminconnect 0.2.x removed get_activity_typed_splits(); use get_activity_splits().
+        Returns the lapDTOs list from the response dict, or the list directly if that's what the
+        API returns.
+        """
+        result = await self._run(self._api.get_activity_splits, activity_id)
+        # API returns {"activityId": ..., "lapDTOs": [...]} or a list directly
         if isinstance(result, list):
             return result
-        return result.get("typeIDs", [])
+        return result.get("lapDTOs", [])
 
     async def get_sleep_data(self, date_str: str) -> Dict[str, Any]:
         """Fetch sleep data for a given date string 'YYYY-MM-DD'."""
@@ -109,7 +115,12 @@ class GarminClient:
 
         Downloads to a temp file, parses with fitparse, then deletes the temp file.
         """
-        fit_data = await self._run(self._api.download_activity, activity_id)
+        # Must explicitly pass ORIGINAL format — the default is TCX, which is not a FIT file.
+        fit_data = await self._run(
+            self._api.download_activity,
+            activity_id,
+            dl_fmt=garminconnect.Garmin.ActivityDownloadFormat.ORIGINAL,
+        )
 
         with tempfile.NamedTemporaryFile(suffix=".fit", delete=False) as f:
             tmp_path = Path(f.name)
