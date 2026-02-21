@@ -1,12 +1,28 @@
 {
   "hrvSummary": {
-    "startTimestampGMT": "2025-01-15T00:00:00",
-    "endTimestampGMT": "2025-01-15T06:00:00",
+    "startTimestampGMT": "2026-02-18T07:00:00.0",
+    "endTimestampGMT": "2026-02-18T14:00:00.0",
+    "startTimestampLocal": "2026-02-17T23:00:00.0",
+    "endTimestampLocal": "2026-02-18T06:00:00.0",
     "lastNight": 52.0,
-    "lastNight5MinHigh": 68.0,
     "weeklyAvg": 58.0,
+    "last5MinHigh": 78.0,
+    "lastNight5MinHigh": 78.0,
+    "baseline": {
+      "lowUpper": 42,
+      "balancedLow": 48,
+      "balancedUpper": 65,
+      "markerValue": 5.0
+    },
     "status": "BALANCED",
-    "startTimestampLocal": "2025-01-14T16:00:00",
-    "endTimestampLocal": "2025-01-14T22:00:00"
-  }
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "startDate": "2026-02-18",
+    "endDate": "2026-02-18",
+    "userProfilePK": 10000001,
+    "hrvReadings": []
+  },
+  "startTimestampGMT": "2026-02-18T07:00:00.0",
+  "endTimestampGMT": "2026-02-18T14:00:00.0",
+  "startTimestampLocal": "2026-02-17T23:00:00.0",
+  "endTimestampLocal": "2026-02-18T06:00:00.0"
 }
