@@ -7,37 +7,50 @@ Single-user Telegram bot that syncs Garmin Connect data and provides AI-powered 
 ## Architecture
 
 - **Bot process**: `python -m fitness` — Telegram bot + APScheduler (nightly Garmin sync)
-- **VPS**: Debian-based, user `fitness`, service `fitness-bot` managed by systemd
+- **VPS**: Debian-based, systemd service `fitness-bot`
+- **Service user**: `fitness` (unprivileged); service files owned by root
+- **App directory**: `/home/fitness/fitness/` (the git repo)
+- **Virtualenv**: `/home/fitness/fitness/.venv/`
+- **Database**: `/home/fitness/fitness/fitness.db` (SQLite, path from `DATABASE_URL` in `.env`)
+- **Garmin tokens**: `/home/fitness/.fitness/garmin_session/`
 - **Auth**: Garmin uses OAuth tokens (garth); Telegram token + Anthropic key in `.env`
 
 ---
 
 ## VPS Access
 
-The VPS IP is stored in `.env` as `VPS_IP`. Load it before running any deploy commands:
+The VPS IP is stored in the **local** `.env` as `VPS_IP`. SSH as `root` (key-based):
 
 ```bash
-export VPS_IP=$(grep VPS_IP .env | cut -d= -f2)
-ssh fitness@$VPS_IP
+source .env
+ssh root@$VPS_IP
 ```
 
-Key-based auth. The `fitness` user has passwordless sudo for service control only.
+The `fitness` user cannot restart services — use `root` for `systemctl` commands.
 
 ---
 
 ## Standard Deploy (from local machine)
 
-After pushing code changes, deploy to VPS:
-
 ```bash
-export VPS_IP=$(grep VPS_IP .env | cut -d= -f2)
-git push && ssh fitness@$VPS_IP "cd ~/fitness && git pull && .venv/bin/pip install -e . && sudo -n systemctl restart fitness-bot"
+# 1. Push code
+git push
+
+# 2. Pull on VPS (run as the fitness user to avoid git safe.directory issues)
+source .env
+ssh root@$VPS_IP "su - fitness -c 'cd /home/fitness/fitness && git pull'"
+
+# 3. Restart the service (requires root)
+ssh root@$VPS_IP "systemctl restart fitness-bot"
+
+# 4. Verify clean startup
+ssh root@$VPS_IP "journalctl -u fitness-bot --no-pager -n 30"
 ```
 
-Check it started cleanly:
+If pip dependencies changed (new packages in `pyproject.toml`), install them before restarting:
 
 ```bash
-ssh fitness@$VPS_IP "journalctl -u fitness-bot --no-pager -n 50"
+ssh root@$VPS_IP "su - fitness -c 'cd /home/fitness/fitness && .venv/bin/pip install -e . -q'"
 ```
 
 ---
@@ -56,17 +69,36 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 git push
 ```
 
-Then run the deploy command above.
+Then run the deploy steps above.
+
+---
+
+## Database Migrations
+
+Schema changes are handled by `src/fitness/db/migrations.py` via `run_migrations()`, which is called automatically at bot startup (in `engine.py`). Migrations are idempotent — safe to restart multiple times.
+
+No manual migration steps are needed after deploy. The new columns will be added on first startup if they don't already exist.
 
 ---
 
 ## Local Development
 
 ```bash
-cd ~/fitness   # or wherever the repo is cloned
+cd /Volumes/Storage/Users/clearf/Documents/repos/fitness
 source .venv/bin/activate
-python -m fitness setup   # first-time or after session expiry
+python -m fitness setup   # first-time or after Garmin session expiry
 python -m fitness         # run bot locally
+```
+
+Run tests:
+
+```bash
+.venv/bin/pytest tests/ \
+  --ignore=tests/unit/test_scheduler.py \
+  --ignore=tests/integration/test_api_activities.py \
+  --ignore=tests/integration/test_api_sync.py \
+  -q
+# Expected: ~475 passed (the ignored files have pre-existing Pydantic V2 config errors)
 ```
 
 ---
@@ -83,22 +115,27 @@ Tokens are stored in `~/.fitness/garmin_session/` (`oauth1_token.json`, `oauth2_
 python -m fitness setup
 
 # Copy tokens to VPS:
-scp ~/.fitness/garmin_session/oauth1_token.json fitness@<vps-ip>:~/.fitness/garmin_session/
-scp ~/.fitness/garmin_session/oauth2_token.json fitness@<vps-ip>:~/.fitness/garmin_session/
+source .env
+scp ~/.fitness/garmin_session/oauth1_token.json root@$VPS_IP:/home/fitness/.fitness/garmin_session/
+scp ~/.fitness/garmin_session/oauth2_token.json root@$VPS_IP:/home/fitness/.fitness/garmin_session/
+ssh root@$VPS_IP "chown fitness:fitness /home/fitness/.fitness/garmin_session/*.json"
 
 # Restart on VPS:
-ssh fitness@<vps-ip> "sudo -n systemctl restart fitness-bot"
+ssh root@$VPS_IP "systemctl restart fitness-bot"
 ```
 
 Tokens expire after several weeks to months. Re-run `python -m fitness setup` when they do.
 
 ---
 
-## Service Management (on VPS)
+## Service Management (on VPS, as root)
 
 ```bash
 # Restart
-sudo -n systemctl restart fitness-bot
+systemctl restart fitness-bot
+
+# Status
+systemctl status fitness-bot
 
 # Logs (live)
 journalctl -u fitness-bot -f
@@ -107,13 +144,13 @@ journalctl -u fitness-bot -f
 journalctl -u fitness-bot --no-pager -n 50
 ```
 
-Note: `sudo -n` is required for non-interactive (SSH) sessions.
+Service file location: `/etc/systemd/system/fitness-bot.service`
 
 ---
 
 ## Environment Variables
 
-Stored in `~/fitness/.env` on the VPS. Required keys:
+Stored in `/home/fitness/fitness/.env` on the VPS. Required keys:
 
 ```
 TELEGRAM_BOT_TOKEN=...
@@ -122,6 +159,7 @@ ANTHROPIC_API_KEY=...
 OPENAI_API_KEY=...             # optional — enables voice messages via Whisper
 DATABASE_URL=sqlite:///./fitness.db
 GARMIN_SYNC_HOUR=3             # UTC hour for nightly sync
+VPS_IP=...                     # only needed in local .env for deploy scripts
 ```
 
 ---
@@ -134,7 +172,8 @@ Garmin sync results (success or failure) are also reported via Telegram after `/
 If the bot goes silent, check the logs:
 
 ```bash
-ssh fitness@<vps-ip> "journalctl -u fitness-bot --no-pager -n 100"
+source .env
+ssh root@$VPS_IP "journalctl -u fitness-bot --no-pager -n 100"
 ```
 
 ---
