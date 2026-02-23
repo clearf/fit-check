@@ -106,6 +106,7 @@ def make_run_report(
     sleep: Optional[SleepRecord] = None,
     hrv: Optional[HRVRecord] = None,
     body_battery=None,
+    workout_classification=None,
 ) -> RunReport:
     return RunReport(
         activity=activity or make_activity(),
@@ -118,6 +119,7 @@ def make_run_report(
         sleep=sleep,
         hrv=hrv,
         body_battery=body_battery,
+        workout_classification=workout_classification,
     )
 
 
@@ -256,6 +258,64 @@ class TestBuildDebriefPrompt:
         result = build_debrief_prompt(report)
         assert "debrief" in result.lower()
 
+    def test_workout_intent_section_present_when_classification_set(self):
+        """Workout Intent section appears when report has a workout classification."""
+        from fitness.analysis.workout_classifier import (
+            ClassificationMethod, WorkoutClassification, WorkoutType,
+        )
+        wc = WorkoutClassification(
+            workout_type=WorkoutType.SPEED,
+            method=ClassificationMethod.STRUCTURED,
+            confidence=0.85,
+            reasoning="name match",
+            workout_name="Speed Repeats",
+            structured_summary="Warmup | 8×800m @ 4:42–4:55/km | Cooldown",
+        )
+        report = make_run_report(workout_classification=wc)
+        result = build_debrief_prompt(report)
+        assert "Workout Intent" in result
+        assert "Speed Repeats" in result
+
+    def test_workout_type_label_in_intent_section(self):
+        """The human-readable workout type label appears in the section."""
+        from fitness.analysis.workout_classifier import (
+            ClassificationMethod, WorkoutClassification, WorkoutType,
+        )
+        wc = WorkoutClassification(
+            workout_type=WorkoutType.SPEED,
+            method=ClassificationMethod.STRUCTURED,
+            confidence=0.85,
+            reasoning="name match",
+            workout_name="Speed Repeats",
+        )
+        report = make_run_report(workout_classification=wc)
+        result = build_debrief_prompt(report)
+        # Should mention "Speed" or "Interval" in some form
+        assert any(word in result for word in ["Speed", "Interval", "speed", "interval"])
+
+    def test_structured_summary_in_intent_section(self):
+        """structured_summary is included when present."""
+        from fitness.analysis.workout_classifier import (
+            ClassificationMethod, WorkoutClassification, WorkoutType,
+        )
+        wc = WorkoutClassification(
+            workout_type=WorkoutType.SPEED,
+            method=ClassificationMethod.STRUCTURED,
+            confidence=0.85,
+            reasoning="name match",
+            workout_name="Speed Repeats",
+            structured_summary="8×800m @ 4:42–4:55/km",
+        )
+        report = make_run_report(workout_classification=wc)
+        result = build_debrief_prompt(report)
+        assert "8×800m" in result
+
+    def test_workout_intent_absent_when_classification_none(self):
+        """No Workout Intent section when report has no classification."""
+        report = make_run_report(workout_classification=None)
+        result = build_debrief_prompt(report)
+        assert "Workout Intent" not in result
+
 
 class TestBuildDebriefSystemPrompt:
     def test_returns_string(self):
@@ -266,6 +326,15 @@ class TestBuildDebriefSystemPrompt:
     def test_mentions_coaching_voice(self):
         result = build_debrief_system_prompt()
         assert "coach" in result.lower()
+
+    def test_mentions_structured_workout_guidance(self):
+        """System prompt must include guidance for evaluating structured workouts."""
+        result = build_debrief_system_prompt()
+        # Should mention something about workout type / structured evaluation
+        assert any(
+            phrase in result.lower()
+            for phrase in ["workout", "structured", "intended", "target", "interval"]
+        )
 
     def test_mentions_data_grounded_analysis(self):
         result = build_debrief_system_prompt()

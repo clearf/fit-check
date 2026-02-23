@@ -214,3 +214,56 @@ class TestLapSegmentLabeling:
         ]
         segs = build_lap_segments(splits, [])
         assert segs[-1].label == "Cooldown"
+
+
+class TestLapSegmentTargetPace:
+    """LapSegment passes target pace fields through from ActivitySplit."""
+
+    def test_target_pace_defaults_to_none(self):
+        """LapSegment.target_pace_slow/fast are None when split has no target."""
+        sp = make_split(0, "run_segment", 0, 227, 800.0)
+        segs = build_lap_segments([sp], [])
+        assert segs[0].target_pace_slow_s_per_km is None
+        assert segs[0].target_pace_fast_s_per_km is None
+
+    def test_target_pace_passed_through_from_split(self):
+        """LapSegment carries target_pace_slow/fast from ActivitySplit."""
+        sp = ActivitySplit(
+            id=0,
+            activity_id=1,
+            user_id=1,
+            split_index=0,
+            split_type="run_segment",
+            start_elapsed_seconds=0,
+            duration_seconds=227.0,
+            distance_meters=800.0,
+            avg_hr=165.0,
+            avg_pace_seconds_per_km=283.0,
+            target_pace_slow_s_per_km=295.1,
+            target_pace_fast_s_per_km=282.6,
+        )
+        segs = build_lap_segments([sp], [])
+        assert segs[0].target_pace_slow_s_per_km == pytest.approx(295.1)
+        assert segs[0].target_pace_fast_s_per_km == pytest.approx(282.6)
+
+    def test_mixed_splits_only_interval_has_target(self):
+        """Only splits with workout targets carry them through; others get None."""
+        interval = ActivitySplit(
+            id=0, activity_id=1, user_id=1, split_index=0,
+            split_type="run_segment", start_elapsed_seconds=0,
+            duration_seconds=227.0, distance_meters=800.0,
+            avg_hr=165.0, avg_pace_seconds_per_km=283.0,
+            target_pace_slow_s_per_km=295.1,
+            target_pace_fast_s_per_km=282.6,
+        )
+        recovery = ActivitySplit(
+            id=1, activity_id=1, user_id=1, split_index=1,
+            split_type="walk_segment", start_elapsed_seconds=227,
+            duration_seconds=180.0, distance_meters=300.0,
+            avg_hr=120.0, avg_pace_seconds_per_km=600.0,
+            target_pace_slow_s_per_km=None,
+            target_pace_fast_s_per_km=None,
+        )
+        segs = build_lap_segments([interval, recovery], [])
+        assert segs[0].target_pace_slow_s_per_km == pytest.approx(295.1)
+        assert segs[1].target_pace_slow_s_per_km is None

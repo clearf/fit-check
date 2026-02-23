@@ -111,6 +111,23 @@ class GarminClient:
             if a.get("activityType", {}).get("typeKey") == activity_type
         ]
 
+    async def get_workout(self, workout_id: int) -> Dict[str, Any]:
+        """Fetch a structured workout definition by ID via the Garmin workout service API.
+
+        garminconnect has no get_workout() method; use connectapi() instead.
+
+        Args:
+            workout_id: Garmin workout ID (integer).
+
+        Returns:
+            Workout definition dict with keys: workoutId, workoutName, description,
+            workoutSegments (containing workoutSteps with ExecutableStepDTO and
+            RepeatGroupDTO entries).
+        """
+        return await self._run(
+            self._api.connectapi, f"/workout-service/workout/{workout_id}"
+        )
+
     async def get_fit_datapoints(self, activity_id: str) -> List[Dict[str, Any]]:
         """
         Download the FIT file for an activity and parse it into datapoint dicts.

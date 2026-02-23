@@ -105,6 +105,9 @@ def make_run_overview_chart(report: RunReport) -> Tuple[bytes, str]:
     # ── Segment background shading ────────────────────────────────────────────
     _draw_segment_shading(ax_pace, ax_hr, lap_segs, total_min)
 
+    # ── Target pace bands (grey fill) — drawn before the pace line ────────────
+    _draw_target_pace_bands(ax_pace, lap_segs)
+
     # ── Segment labels along top of pace panel ────────────────────────────────
     _draw_segment_labels(ax_pace, lap_segs, total_min)
 
@@ -294,6 +297,47 @@ def _timeseries_hr(pts: List[TimeseriesPoint]):
             t.append(pt.elapsed_seconds / 60.0)
             h.append(pt.heart_rate)
     return t, h
+
+
+def _draw_target_pace_bands(ax_pace, lap_segs: List[LapSegment]) -> None:
+    """
+    Overlay a soft grey fill on the pace panel for each lap that has a
+    structured pace target (target_pace_slow_s_per_km and target_pace_fast_s_per_km).
+
+    The band spans the lap's time window on the X-axis and the target pace
+    range on the (inverted) Y-axis.  Drawn at zorder=2 so it sits above the
+    segment shading (zorder=1) but behind the actual pace line (zorder=3).
+
+    Visual choices:
+      - Fill: light grey (#aaaaaa), alpha=0.18 — clearly visible but unobtrusive
+      - Border: dashed lines at band edges, alpha=0.45 — shows exact target limits
+    """
+    for seg in lap_segs:
+        slow = getattr(seg, "target_pace_slow_s_per_km", None)
+        fast = getattr(seg, "target_pace_fast_s_per_km", None)
+        if slow is None or fast is None:
+            continue
+        # Sanity: slow pace should be ≥ fast pace (more s/km = slower)
+        if slow < fast:
+            slow, fast = fast, slow  # swap silently if inverted
+
+        x0 = seg.start_elapsed_s / 60.0
+        x1 = seg.end_elapsed_s / 60.0
+        # Convert from s/km to min/mi (the pace panel's Y units)
+        y_slow = _pace_to_min_mi(slow)  # larger value = bottom of band (axis inverted)
+        y_fast = _pace_to_min_mi(fast)  # smaller value = top of band
+
+        # Grey fill across the band
+        ax_pace.fill_between(
+            [x0, x1], y_fast, y_slow,
+            color="#aaaaaa", alpha=0.18, zorder=2, linewidth=0,
+        )
+        # Dashed border lines at the band edges (top = fast, bottom = slow)
+        ax_pace.hlines(
+            [y_fast, y_slow], x0, x1,
+            colors="#aaaaaa", linewidths=0.6,
+            linestyles="--", alpha=0.45, zorder=2,
+        )
 
 
 def _draw_segment_shading(ax_pace, ax_hr, lap_segs: List[LapSegment],

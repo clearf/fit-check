@@ -333,3 +333,43 @@ class TestGetFitDatapoints:
 
         with pytest.raises(Exception):
             await connected_client.get_fit_datapoints("12345")
+
+
+# ─── Tests: get_workout ───────────────────────────────────────────────────────
+
+FAKE_WORKOUT = {
+    "workoutId": 1467965958,
+    "workoutName": "Speed Repeats",
+    "description": "Warm up, speed reps, cool down.",
+    "workoutSegments": [],
+}
+
+
+class TestGetWorkout:
+    async def test_calls_connectapi_with_correct_path(self, connected_client, mock_api):
+        """Must use connectapi() — garminconnect has no get_workout() method."""
+        mock_api.connectapi = MagicMock(return_value=FAKE_WORKOUT)
+        await connected_client.get_workout(1467965958)
+        mock_api.connectapi.assert_called_once_with(
+            "/workout-service/workout/1467965958"
+        )
+
+    async def test_accepts_int_workout_id(self, connected_client, mock_api):
+        """workout_id is an int; must be interpolated as int in URL path."""
+        mock_api.connectapi = MagicMock(return_value=FAKE_WORKOUT)
+        await connected_client.get_workout(1467965958)
+        call_args = mock_api.connectapi.call_args.args[0]
+        assert "1467965958" in call_args
+
+    async def test_returns_workout_dict(self, connected_client, mock_api):
+        """Returns the raw dict from the Garmin workout service."""
+        mock_api.connectapi = MagicMock(return_value=FAKE_WORKOUT)
+        result = await connected_client.get_workout(1467965958)
+        assert result["workoutId"] == 1467965958
+        assert result["workoutName"] == "Speed Repeats"
+
+    async def test_returns_description(self, connected_client, mock_api):
+        """Description field is preserved in the returned dict."""
+        mock_api.connectapi = MagicMock(return_value=FAKE_WORKOUT)
+        result = await connected_client.get_workout(1467965958)
+        assert "description" in result

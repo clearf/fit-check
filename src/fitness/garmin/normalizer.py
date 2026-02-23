@@ -263,4 +263,139 @@ def normalize_typed_split(raw: Dict[str, Any], split_index: int) -> Dict[str, An
         "avg_hr": raw.get("averageHR"),
         "avg_pace_seconds_per_km": avg_pace,
         "total_ascent_meters": raw.get("elevationGain"),
+        "wkt_step_index": raw.get("wktStepIndex"),
     }
+
+
+def _collect_all_steps(steps: list) -> list:
+    """
+    Collect ALL steps (both container and executable) for step target mapping.
+
+    Garmin workout definitions have two step types:
+      - ExecutableStepDTO: a real step (warmup, interval, recovery, etc.)
+      - RepeatGroupDTO: a loop container with nested workoutSteps
+
+    IMPORTANT: The wktStepIndex in lapDTOs maps to the RepeatGroupDTO container's
+    stepOrder (not the executable child's stepOrder). For example, if a cadence
+    drill is at stepOrder=4 inside a RepeatGroup at stepOrder=3, laps will show
+    wktStepIndex=2 (= stepOrder=3 - 1), referring to the group, not the child.
+
+    Strategy: include ALL steps (containers and executables) in the flat list.
+    RepeatGroupDTO containers use the first child's target info (since the group
+    itself has no target — the target belongs to the interval step inside it).
+
+    Args:
+        steps: List of raw step dicts from workoutSegments[*].workoutSteps.
+
+    Returns:
+        Flat list of all step dicts, with RepeatGroupDTOs replaced by a synthetic
+        entry carrying the first child's target info and the group's own stepOrder.
+    """
+    flat = []
+    for step in steps:
+        if step.get("type") == "RepeatGroupDTO":
+            # The RepeatGroup container itself occupies a stepOrder slot and
+            # maps to a wktStepIndex in the lap data. We represent it using
+            # a synthetic entry derived from the first executable child's targets.
+            child_steps = step.get("workoutSteps", [])
+            first_executable = next(
+                (s for s in child_steps if s.get("type") != "RepeatGroupDTO"),
+                None
+            )
+            if first_executable is not None:
+                # Synthetic entry: group's stepOrder + first child's target info
+                synthetic = dict(first_executable)
+                synthetic["stepOrder"] = step["stepOrder"]
+                flat.append(synthetic)
+            # Also recurse into children (they each have their own stepOrders)
+            flat.extend(_collect_all_steps(child_steps))
+        else:
+            flat.append(step)
+    return flat
+
+
+def _parse_step_targets(step: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract target values from a single ExecutableStepDTO.
+
+    Returns a dict with keys:
+      target_pace_slow_s_per_km  — slow-end pace in s/km (None if not pace target)
+      target_pace_fast_s_per_km  — fast-end pace in s/km (None if not pace target)
+      target_cadence_low         — low cadence in spm (None if not cadence target)
+      target_cadence_high        — high cadence in spm (None if not cadence target)
+      step_type_key              — e.g. "warmup", "interval", "recovery", "cooldown"
+      end_condition_key          — e.g. "time", "distance", "lap.button"
+      end_condition_value        — seconds (time) or metres (distance), or None
+      description                — step description text, or None
+    """
+    target_type = step.get("targetType") or {}
+    target_key = target_type.get("workoutTargetTypeKey", "") if isinstance(target_type, dict) else ""
+
+    step_type = step.get("stepType") or {}
+    step_type_key = step_type.get("stepTypeKey", "") if isinstance(step_type, dict) else ""
+
+    end_cond = step.get("endCondition") or {}
+    end_cond_key = end_cond.get("conditionTypeKey", "") if isinstance(end_cond, dict) else ""
+
+    val_one = step.get("targetValueOne")
+    val_two = step.get("targetValueTwo")
+
+    if target_key == "pace.zone":
+        # Garmin API: targetValueOne = faster m/s (e.g. 3.538 m/s → 4:42/km)
+        #             targetValueTwo = slower m/s (e.g. 3.389 m/s → 4:55/km)
+        # Column convention: slow_s_per_km > fast_s_per_km (more s/km = slower pace)
+        pace_fast = _pace_from_speed(val_one)  # faster m/s → fewer s/km = fast end
+        pace_slow = _pace_from_speed(val_two)  # slower m/s → more s/km = slow end
+        cadence_low = None
+        cadence_high = None
+    elif target_key == "cadence":
+        pace_slow = None
+        pace_fast = None
+        cadence_low = val_one
+        cadence_high = val_two
+    else:
+        pace_slow = None
+        pace_fast = None
+        cadence_low = None
+        cadence_high = None
+
+    return {
+        "target_pace_slow_s_per_km": pace_slow,
+        "target_pace_fast_s_per_km": pace_fast,
+        "target_cadence_low": cadence_low,
+        "target_cadence_high": cadence_high,
+        "step_type_key": step_type_key,
+        "end_condition_key": end_cond_key,
+        "end_condition_value": step.get("endConditionValue"),
+        "description": step.get("description"),
+    }
+
+
+def build_step_target_map(workout_def: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
+    """
+    Build a lookup map from wktStepIndex → step target info.
+
+    Garmin's wktStepIndex on lapDTOs is 0-based; workout step stepOrder is
+    1-based. The mapping is: wktStepIndex = stepOrder - 1.
+
+    RepeatGroupDTO container steps occupy stepOrder slots but do not generate
+    laps, so gaps in wktStepIndex are expected (e.g. 0,1,2,3,5,6,8,9,10,12).
+    Only ExecutableStepDTO entries are included in the map.
+
+    Args:
+        workout_def: Raw dict from GET /workout-service/workout/{id}.
+
+    Returns:
+        Dict keyed by wktStepIndex (int), values are dicts from _parse_step_targets().
+        Returns empty dict if workout_def has no segments or steps.
+    """
+    result: Dict[int, Dict[str, Any]] = {}
+    segments = workout_def.get("workoutSegments", [])
+    for segment in segments:
+        steps = segment.get("workoutSteps", [])
+        for step in _collect_all_steps(steps):
+            step_order = step.get("stepOrder")
+            if step_order is not None:
+                wkt_idx = step_order - 1  # convert 1-based stepOrder to 0-based wktStepIndex
+                result[wkt_idx] = _parse_step_targets(step)
+    return result

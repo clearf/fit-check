@@ -45,6 +45,10 @@ class LapSegment:
     avg_hr: float
     hr_zone_distribution: Dict[int, float] = field(default_factory=dict)
 
+    # Target pace from the linked workout step (None when no structured target)
+    target_pace_slow_s_per_km: Optional[float] = None   # slow end of pace band (more s/km)
+    target_pace_fast_s_per_km: Optional[float] = None   # fast end of pace band (fewer s/km)
+
     @property
     def distance_miles(self) -> float:
         return self.distance_meters / METERS_PER_MILE
@@ -179,6 +183,8 @@ def build_lap_segments(
             avg_pace_s_per_km=sp.avg_pace_seconds_per_km or 0.0,
             avg_hr=sp.avg_hr or 0.0,
             hr_zone_distribution=zones,
+            target_pace_slow_s_per_km=getattr(sp, "target_pace_slow_s_per_km", None),
+            target_pace_fast_s_per_km=getattr(sp, "target_pace_fast_s_per_km", None),
         ))
 
     return segments

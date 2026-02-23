@@ -36,6 +36,9 @@ class Activity(SQLModel, table=True):
     # Raw JSON blob for full API response reference
     raw_summary_json: Optional[str] = None
 
+    # Structured workout definition from Garmin workout service (if activity had a linked workout)
+    workout_definition_json: Optional[str] = None
+
     # Path to the downloaded .fit file on disk
     fit_file_path: Optional[str] = None
 
@@ -92,6 +95,11 @@ class ActivitySplit(SQLModel, table=True):
     avg_hr: Optional[float] = None
     avg_pace_seconds_per_km: Optional[float] = None
     total_ascent_meters: Optional[float] = None
+
+    # Structured workout linkage (from Garmin workout definition via wktStepIndex)
+    wkt_step_index: Optional[int] = None            # 0-based index into workout steps
+    target_pace_slow_s_per_km: Optional[float] = None  # slow boundary of target pace band
+    target_pace_fast_s_per_km: Optional[float] = None  # fast boundary of target pace band
 
     # Relationship
     activity: Optional[Activity] = Relationship(back_populates="splits")

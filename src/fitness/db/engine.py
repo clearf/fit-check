@@ -23,6 +23,8 @@ def get_engine():
         from fitness.models.wellness import SleepRecord, HRVRecord, BodyBatteryRecord  # noqa
         from fitness.models.sync import SyncLog  # noqa
         SQLModel.metadata.create_all(_engine)
+        from fitness.db.migrations import run_migrations
+        run_migrations(_engine)
     return _engine
 
 

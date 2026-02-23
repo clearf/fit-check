@@ -39,6 +39,7 @@ from fitness.garmin.normalizer import (
     normalize_sleep,
     normalize_hrv,
     normalize_typed_split,
+    build_step_target_map,
 )
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
@@ -571,3 +572,151 @@ class TestNormalizeTypedSplit:
             "total_ascent_meters",
         }
         assert required_keys.issubset(result.keys())
+
+    def test_wkt_step_index_extracted_when_present(self, typed_splits):
+        """wktStepIndex from lapDTO is stored as wkt_step_index."""
+        # Real fixture laps[0] has wktStepIndex=0
+        result = normalize_typed_split(typed_splits[0], split_index=0)
+        assert result["wkt_step_index"] == 0
+
+    def test_wkt_step_index_none_when_absent(self):
+        """Laps without wktStepIndex (e.g. unstructured runs) return None."""
+        raw = {"intensityType": "ACTIVE", "distance": 800.0, "duration": 227.0,
+               "averageHR": 160.0, "averageSpeed": 3.5}
+        result = normalize_typed_split(raw, split_index=0)
+        assert result["wkt_step_index"] is None
+
+    def test_wkt_step_index_for_speed_interval(self, typed_splits):
+        """laps[16] is the first 800m speed interval — wktStepIndex=9."""
+        # lap index 16 (0-based) = lapIndex 17 in fixture
+        result = normalize_typed_split(typed_splits[16], split_index=16)
+        assert result["wkt_step_index"] == 9
+
+
+# ─── Workout step target map ──────────────────────────────────────────────────
+
+@pytest.fixture
+def workout_def():
+    """Real Garmin workout definition from /workout-service/workout/{id}."""
+    return json.loads((FIXTURES / "garmin_workout.json").read_text())
+
+
+class TestBuildStepTargetMap:
+    """Tests for build_step_target_map() using the real garmin_workout.json fixture.
+
+    The fixture is "Speed Repeats" workout (workoutId=1467965958):
+      stepOrder=1  (wktStepIndex=0):  WARMUP, 5min, no target
+      stepOrder=2  (wktStepIndex=1):  other, "Up next: Cadence Drill", lap.button
+      stepOrder=3  (wktStepIndex=2):  RepeatGroup container (4 iterations)
+      stepOrder=4  (wktStepIndex=3):  interval inside repeat — cadence 150-200 spm
+      stepOrder=5  (wktStepIndex=4):  recovery inside repeat — no target
+      stepOrder=6  (wktStepIndex=5):  other, "Up next: Accel-Glider"
+      stepOrder=7  (wktStepIndex=6):  RepeatGroup container (4 iterations)
+      stepOrder=8  (wktStepIndex=7):  interval inside repeat — no target (accel-glider)
+      stepOrder=9  (wktStepIndex=8):  other, "Up next: Speed Drill"
+      stepOrder=10 (wktStepIndex=9):  RepeatGroup container (8 iterations)
+      stepOrder=11 (wktStepIndex=10): interval inside repeat — pace.zone 3.538/3.389 m/s
+      stepOrder=12 (wktStepIndex=11): recovery inside repeat — no target
+      stepOrder=13 (wktStepIndex=12): COOLDOWN, 5min, no target
+
+    wktStepIndex = stepOrder - 1 (0-based vs 1-based).
+    Real splits confirm indices: 0,1,2,3,5,6,8,9,10,12 appear in lapDTOs.
+    """
+
+    def test_returns_dict(self, workout_def):
+        result = build_step_target_map(workout_def)
+        assert isinstance(result, dict)
+
+    def test_warmup_step_keyed_at_index_0(self, workout_def):
+        """stepOrder=1 → wktStepIndex=0 (warmup)."""
+        result = build_step_target_map(workout_def)
+        assert 0 in result
+
+    def test_cooldown_step_keyed_at_index_12(self, workout_def):
+        """stepOrder=13 → wktStepIndex=12 (cooldown)."""
+        result = build_step_target_map(workout_def)
+        assert 12 in result
+
+    def test_pace_zone_step_has_slow_pace(self, workout_def):
+        """stepOrder=11 (800m interval) → wktStepIndex=10, pace.zone target.
+
+        Garmin targetValueTwo=3.3889971 m/s is the SLOWER end → more s/km.
+        slow_s_per_km should be the higher value (≈295.1 s/km = 4:55/km).
+        """
+        result = build_step_target_map(workout_def)
+        # targetValueTwo=3.3889971 m/s (slow end) → 1000/3.389 ≈ 295.1 s/km
+        assert result[10]["target_pace_slow_s_per_km"] == pytest.approx(1000 / 3.3889971, abs=1.0)
+
+    def test_pace_zone_step_has_fast_pace(self, workout_def):
+        """stepOrder=11 (800m interval) → wktStepIndex=10, pace.zone fast end.
+
+        Garmin targetValueOne=3.5380059 m/s is the FASTER end → fewer s/km.
+        fast_s_per_km should be the lower value (≈282.6 s/km = 4:42/km).
+        """
+        result = build_step_target_map(workout_def)
+        # targetValueOne=3.5380059 m/s (fast end) → 1000/3.538 ≈ 282.6 s/km
+        assert result[10]["target_pace_fast_s_per_km"] == pytest.approx(1000 / 3.5380059, abs=1.0)
+
+    def test_warmup_no_target_returns_none_for_pace(self, workout_def):
+        """Warmup has targetTypeKey='no.target' → both pace fields None."""
+        result = build_step_target_map(workout_def)
+        assert result[0]["target_pace_slow_s_per_km"] is None
+        assert result[0]["target_pace_fast_s_per_km"] is None
+
+    def test_cadence_step_returns_none_for_pace(self, workout_def):
+        """wktStepIndex=2 is the cadence RepeatGroup → maps to cadence target, not pace."""
+        result = build_step_target_map(workout_def)
+        # wktStepIndex=2 = RepeatGroup container (stepOrder=3), first child has cadence target
+        assert result[2]["target_pace_slow_s_per_km"] is None
+        assert result[2]["target_pace_fast_s_per_km"] is None
+
+    def test_cadence_step_has_cadence_targets(self, workout_def):
+        """wktStepIndex=2 (cadence RepeatGroup): first child has cadence 150-200 spm."""
+        result = build_step_target_map(workout_def)
+        # wktStepIndex=2 = RepeatGroup whose first child is the cadence drill step
+        assert result[2]["target_cadence_low"] == pytest.approx(150.0)
+        assert result[2]["target_cadence_high"] == pytest.approx(200.0)
+
+    def test_repeat_group_steps_are_flattened(self, workout_def):
+        """Steps nested inside RepeatGroupDTO must be included in the map."""
+        result = build_step_target_map(workout_def)
+        # stepOrder=12 (recovery inside 8x800m group) → wktStepIndex=11
+        assert 11 in result
+
+    def test_all_real_split_wkt_indices_present(self, workout_def):
+        """All wktStepIndex values seen in real lap data must be in the map."""
+        result = build_step_target_map(workout_def)
+        # Real splits had these wktStepIndex values:
+        real_indices = {0, 1, 2, 3, 5, 6, 8, 9, 10, 12}
+        for idx in real_indices:
+            assert idx in result, f"wktStepIndex={idx} missing from step target map"
+
+    def test_step_type_key_preserved(self, workout_def):
+        """step_type_key from stepType.stepTypeKey is stored per step."""
+        result = build_step_target_map(workout_def)
+        assert result[0]["step_type_key"] == "warmup"
+        assert result[12]["step_type_key"] == "cooldown"
+
+    def test_description_stored(self, workout_def):
+        """Step description (drill instructions etc.) is stored."""
+        result = build_step_target_map(workout_def)
+        # stepOrder=4 (cadence drill) has a description
+        assert result[3]["description"] is not None
+        assert len(result[3]["description"]) > 0
+
+    def test_non_pace_step_cadence_fields_none_when_not_cadence(self, workout_def):
+        """Non-cadence steps have target_cadence_low/high = None."""
+        result = build_step_target_map(workout_def)
+        assert result[0]["target_cadence_low"] is None
+        assert result[0]["target_cadence_high"] is None
+
+    def test_empty_segments_returns_empty_dict(self):
+        """Workout with no steps produces empty map."""
+        workout = {"workoutSegments": [{"workoutSteps": []}]}
+        result = build_step_target_map(workout)
+        assert result == {}
+
+    def test_missing_segments_key_returns_empty_dict(self):
+        """Workout with no workoutSegments key produces empty map."""
+        result = build_step_target_map({})
+        assert result == {}

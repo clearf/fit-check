@@ -18,6 +18,7 @@ from fitness.analysis.galloway import GallowaySegments, detect_galloway_segments
 from fitness.analysis.heart_rate import CardiacDriftEvent, detect_cardiac_drift
 from fitness.analysis.segments import LapSegment, RunSegment, build_lap_segments, build_mile_segments
 from fitness.analysis.timeseries import TimeseriesPoint, datapoints_to_timeseries
+from fitness.analysis.workout_classifier import WorkoutClassification, classify_workout
 from fitness.models.activity import Activity, ActivityDatapoint, ActivitySplit
 from fitness.models.wellness import BodyBatteryRecord, HRVRecord, SleepRecord
 
@@ -41,6 +42,9 @@ class RunReport:
     sleep: Optional[SleepRecord] = None
     hrv: Optional[HRVRecord] = None
     body_battery: Optional[BodyBatteryRecord] = None
+
+    # Structured workout classification (None for unstructured runs)
+    workout_classification: Optional[WorkoutClassification] = None
 
 
 def build_run_report(activity_id: int, engine) -> RunReport:
@@ -139,6 +143,9 @@ def build_run_report(activity_id: int, engine) -> RunReport:
     ]
     galloway = detect_galloway_segments(split_dicts)
 
+    # Classify the workout type from the structured definition (non-fatal if absent)
+    workout_classification = classify_workout(activity)
+
     return RunReport(
         activity=activity,
         timeseries=timeseries,
@@ -150,4 +157,5 @@ def build_run_report(activity_id: int, engine) -> RunReport:
         sleep=sleep,
         hrv=hrv,
         body_battery=body_battery,
+        workout_classification=workout_classification,
     )

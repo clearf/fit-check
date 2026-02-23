@@ -220,3 +220,29 @@ class TestBuildRunReport:
     def test_invalid_activity_id_raises(self, session, engine):
         with pytest.raises(ValueError):
             build_run_report(99999, engine)
+
+    def test_workout_classification_none_when_no_workout_json(self, session, engine):
+        """When activity has no workout_definition_json, classification is None."""
+        activity = seed_activity(session)  # no workout_definition_json set
+        seed_datapoints(session, activity)
+        report = build_run_report(activity.id, engine)
+        assert report.workout_classification is None
+
+    def test_workout_classification_present_when_workout_json_set(self, session, engine):
+        """When activity has workout_definition_json, classification is a WorkoutClassification."""
+        import json
+        from fitness.analysis.workout_classifier import WorkoutClassification
+        activity = seed_activity(session)
+        activity.workout_definition_json = json.dumps({
+            "workoutId": 12345,
+            "workoutName": "Speed Repeats",
+            "description": "Fast intervals.",
+            "workoutSegments": [],
+        })
+        session.add(activity)
+        session.commit()
+        seed_datapoints(session, activity)
+        report = build_run_report(activity.id, engine)
+        assert report.workout_classification is not None
+        assert isinstance(report.workout_classification, WorkoutClassification)
+        assert report.workout_classification.workout_name == "Speed Repeats"

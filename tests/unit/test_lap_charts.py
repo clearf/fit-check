@@ -54,6 +54,8 @@ def make_lap_segment(
     distance_meters: float = 1600.0,
     avg_pace_s_per_km: float = 375.0,
     avg_hr: float = 145.0,
+    target_pace_slow_s_per_km: Optional[float] = None,
+    target_pace_fast_s_per_km: Optional[float] = None,
 ) -> LapSegment:
     return LapSegment(
         label=label,
@@ -65,6 +67,8 @@ def make_lap_segment(
         avg_pace_s_per_km=avg_pace_s_per_km,
         avg_hr=avg_hr,
         hr_zone_distribution={1: 0.1, 2: 0.3, 3: 0.3, 4: 0.25, 5: 0.05},
+        target_pace_slow_s_per_km=target_pace_slow_s_per_km,
+        target_pace_fast_s_per_km=target_pace_fast_s_per_km,
     )
 
 
@@ -256,3 +260,81 @@ class TestElevationChart:
         result = make_elevation_chart(report)
         assert result is not None
         assert result[0][:4] == b'\x89PNG'
+
+
+# ─── Target pace bands ────────────────────────────────────────────────────────
+
+class TestTargetPaceBands:
+    """Target pace band overlay: grey fill behind pace line for laps with targets."""
+
+    def test_no_crash_with_no_targets(self):
+        """Laps without target fields render without error."""
+        segs = [make_lap_segment("Run 1", "run_segment", 0, 227, 800.0)]
+        report = make_report(lap_segments=segs)
+        png, _ = make_run_overview_chart(report)
+        assert png[:4] == b'\x89PNG'
+
+    def test_no_crash_with_targets(self):
+        """Laps with target pace fields render without error and produce real content."""
+        seg = make_lap_segment(
+            "Run 1", "run_segment", 0, 227, 800.0,
+            target_pace_slow_s_per_km=295.1,   # 4:55/km — slow end
+            target_pace_fast_s_per_km=282.6,   # 4:42/km — fast end
+        )
+        report = make_report(lap_segments=[seg])
+        png, _ = make_run_overview_chart(report)
+        assert png[:4] == b'\x89PNG'
+        assert len(png) > 10_000
+
+    def test_no_crash_mixed_targets(self):
+        """Some laps have targets, some don't — both render without error."""
+        segs = [
+            make_lap_segment("Warmup",   "warmup_segment",   0,   300, 800.0),
+            make_lap_segment(
+                "Run 1", "run_segment", 300, 227, 800.0,
+                target_pace_slow_s_per_km=295.1,
+                target_pace_fast_s_per_km=282.6,
+            ),
+            make_lap_segment("Walk 1",   "walk_segment",     527, 180, 250.0),
+            make_lap_segment(
+                "Run 2", "run_segment", 707, 231, 800.0,
+                target_pace_slow_s_per_km=295.1,
+                target_pace_fast_s_per_km=282.6,
+            ),
+            make_lap_segment("Cooldown", "cooldown_segment", 938, 249, 163.0),
+        ]
+        report = make_report(lap_segments=segs)
+        png, _ = make_run_overview_chart(report)
+        assert png[:4] == b'\x89PNG'
+        assert len(png) > 10_000
+
+    def test_no_crash_interval_workout_with_targets(self):
+        """Full interval workout with target bands on all run segments."""
+        segs_with_targets = []
+        for seg in INTERVAL_LAP_SEGMENTS:
+            if seg.split_type == "run_segment":
+                segs_with_targets.append(make_lap_segment(
+                    seg.label, seg.split_type, seg.start_elapsed_s,
+                    seg.duration_seconds, seg.distance_meters,
+                    avg_pace_s_per_km=seg.avg_pace_s_per_km,
+                    avg_hr=seg.avg_hr,
+                    target_pace_slow_s_per_km=295.1,
+                    target_pace_fast_s_per_km=282.6,
+                ))
+            else:
+                segs_with_targets.append(seg)
+        report = make_report(lap_segments=segs_with_targets)
+        png, _ = make_run_overview_chart(report)
+        assert png[:4] == b'\x89PNG'
+        assert len(png) > 10_000
+
+    def test_no_crash_empty_timeseries_with_targets(self):
+        """Empty timeseries + targets doesn't crash."""
+        seg = make_lap_segment(
+            "Run 1", "run_segment", 0, 227, 800.0,
+            target_pace_slow_s_per_km=295.1,
+            target_pace_fast_s_per_km=282.6,
+        )
+        report = make_report(lap_segments=[seg], timeseries=[])
+        png, _ = make_run_overview_chart(report)
+        assert png[:4] == b'\x89PNG'

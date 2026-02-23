@@ -120,6 +120,77 @@ class TestActivityDatapoint:
         assert result.temperature_c == 12.5
 
 
+class TestActivitySplitNewFields:
+    """Tests for new workout-related fields added to ActivitySplit."""
+
+    def test_wkt_step_index_defaults_to_none(self):
+        sp = ActivitySplit(
+            activity_id=1, split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=60.0, distance_meters=200.0,
+        )
+        assert sp.wkt_step_index is None
+
+    def test_target_pace_slow_defaults_to_none(self):
+        sp = ActivitySplit(
+            activity_id=1, split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=60.0, distance_meters=200.0,
+        )
+        assert sp.target_pace_slow_s_per_km is None
+
+    def test_target_pace_fast_defaults_to_none(self):
+        sp = ActivitySplit(
+            activity_id=1, split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=60.0, distance_meters=200.0,
+        )
+        assert sp.target_pace_fast_s_per_km is None
+
+    def test_wkt_step_index_can_be_set(self):
+        sp = ActivitySplit(
+            activity_id=1, split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=227.0, distance_meters=800.0,
+            wkt_step_index=9,
+        )
+        assert sp.wkt_step_index == 9
+
+    def test_target_pace_fields_can_be_set(self):
+        sp = ActivitySplit(
+            activity_id=1, split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=227.0, distance_meters=800.0,
+            target_pace_slow_s_per_km=282.6,
+            target_pace_fast_s_per_km=295.1,
+        )
+        assert sp.target_pace_slow_s_per_km == pytest.approx(282.6)
+        assert sp.target_pace_fast_s_per_km == pytest.approx(295.1)
+
+
+class TestActivityNewFields:
+    """Tests for new workout-related fields added to Activity."""
+
+    def test_workout_definition_json_defaults_to_none(self):
+        act = Activity(
+            garmin_activity_id="99",
+            name="Test Run",
+            activity_type="running",
+            start_time_utc=datetime(2026, 2, 18, 19, 22),
+            duration_seconds=3600.0,
+            distance_meters=10000.0,
+        )
+        assert act.workout_definition_json is None
+
+    def test_workout_definition_json_can_be_set(self):
+        import json
+        act = Activity(
+            garmin_activity_id="99",
+            name="Test Run",
+            activity_type="running",
+            start_time_utc=datetime(2026, 2, 18, 19, 22),
+            duration_seconds=3600.0,
+            distance_meters=10000.0,
+            workout_definition_json=json.dumps({"workoutId": 123}),
+        )
+        assert json.loads(act.workout_definition_json)["workoutId"] == 123
+
+
 class TestActivitySplit:
     def test_split_types(self, test_session: Session, seeded_activity: Activity):
         run_split = ActivitySplit(

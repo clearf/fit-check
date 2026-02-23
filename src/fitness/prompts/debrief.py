@@ -49,6 +49,30 @@ def build_debrief_prompt(
     lines.append("  |  ".join(p for p in summary_parts if p))
     lines.append("")
 
+    # ── Workout Intent (structured plan, when available) ──────────────────────
+    wc = getattr(report, "workout_classification", None)
+    if wc is not None:
+        _WORKOUT_TYPE_LABELS = {
+            "speed": "Speed/Interval",
+            "hill": "Hill Repeats",
+            "race_pace": "Tempo/Race Pace",
+            "long_run": "Long Run",
+            "easy": "Easy/Recovery",
+            "drills": "Drills/Form Work",
+            "unknown": "Structured Workout",
+        }
+        type_label = _WORKOUT_TYPE_LABELS.get(wc.workout_type, "Structured Workout")
+        name_str = f" — {wc.workout_name}" if wc.workout_name else ""
+        lines.append(f"## Workout Intent: {type_label}{name_str}")
+        if wc.workout_description:
+            lines.append(f"_{wc.workout_description}_")
+        if wc.structured_summary:
+            lines.append("")
+            lines.append("**Planned structure:**")
+            for step_line in wc.structured_summary.split("\n"):
+                lines.append(f"  {step_line}")
+        lines.append("")
+
     # ── Galloway summary ───────────────────────────────────────────────────────
     g = report.galloway
     if g.is_galloway:
@@ -177,6 +201,15 @@ def build_debrief_system_prompt() -> str:
         "explain the physiology briefly in plain language. "
         "If the runner has shared a subjective reflection, integrate both the data evidence "
         "and their experience — explain whether the data corroborates what they felt. "
+        "\n\n"
+        "When a Workout Intent section is provided, evaluate actual performance against the "
+        "structured plan. For speed/interval workouts, check whether reps hit target pace "
+        "and whether recovery was adequate. For tempo/race-pace workouts, evaluate whether "
+        "sustained effort matched the intended zone. For drills (cadence, acceleration-glider), "
+        "comment on execution quality. For hill repeats, note effort consistency. "
+        "Always frame the debrief around what the workout was trying to achieve physiologically "
+        "and how well the execution served that goal. "
+        "\n\n"
         "Keep the debrief to 3-5 paragraphs unless asked for more detail. "
         "End with exactly ONE follow-up question if there's missing context that would "
         "meaningfully change your analysis (e.g., pre-run nutrition, sleep quality if not "
