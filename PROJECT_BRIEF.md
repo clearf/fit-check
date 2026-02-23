@@ -184,7 +184,9 @@ The bot handlers and app.py are the most valuable gaps. They require a `PTB Appl
 
 Roughly in priority order:
 
-1. **Bot handler test coverage** — `handlers.py` at 71% is the largest meaningful gap. Needs a PTB `Application`/`Update`/`ContextTypes` mock harness. The `/lastrun` success path, error path, chart-sending path are the key cases.
+1. **Target pace overlay on charts (Phase 2)** — Garmin structured workouts include per-step target pace ranges, linked to laps via `wktStepIndex` on each `lapDTO`. The `associatedWorkoutId` is already stored in `raw_summary_json`. Implementation requires: (a) fetching the workout definition via `get_workout(workoutId)` during sync, (b) storing step targets (pace low/high, HR zone) keyed by `wktStepIndex`, (c) rendering a grey target band behind the actual pace line in `make_run_overview_chart()` — matching the Garmin Connect web UI. This would make "did I hit my target?" immediately visible.
+
+2. **Bot handler test coverage** — `handlers.py` at 71% is the largest meaningful gap. Needs a PTB `Application`/`Update`/`ContextTypes` mock harness. The `/lastrun` success path, error path, chart-sending path are the key cases.
 
 2. **`normalizer.py` edge cases** — line 82 (walk/cooldown split type fallthrough), lines 164-165/173 (normalize_sleep error handling), lines 205-206 (normalize_hrv fallback date). Small targeted tests.
 

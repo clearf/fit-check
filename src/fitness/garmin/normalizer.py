@@ -232,15 +232,17 @@ def normalize_typed_split(raw: Dict[str, Any], split_index: int) -> Dict[str, An
         Dict with keys matching ActivitySplit model columns.
     """
     # Map intensityType → split_type string
+    # Preserve WARMUP/COOLDOWN as distinct types so the segment labeler can
+    # assign "Warmup" / "Cooldown" labels without relying on distance heuristics.
     intensity = str(raw.get("intensityType", "")).upper()
     if intensity == "ACTIVE":
         split_type = "run_segment"
     elif intensity == "RECOVERY":
         split_type = "walk_segment"
     elif intensity == "WARMUP":
-        split_type = "run_segment"
+        split_type = "warmup_segment"
     elif intensity == "COOLDOWN":
-        split_type = "walk_segment"
+        split_type = "cooldown_segment"
     else:
         split_type = "lap"
 

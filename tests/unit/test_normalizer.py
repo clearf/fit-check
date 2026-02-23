@@ -483,15 +483,17 @@ class TestNormalizeTypedSplit:
       - Fields: distance, duration, averageHR, averageSpeed, elevationGain
       - startTimeGMT: ISO 8601 absolute timestamp (elapsed computed by caller)
 
-    Note: split_type mapping follows workout intent:
-      WARMUP/ACTIVE → run_segment
-      RECOVERY/COOLDOWN → walk_segment
+    Note: split_type mapping preserves Garmin intensityType:
+      ACTIVE → run_segment
+      RECOVERY → walk_segment
+      WARMUP → warmup_segment  (distinct so labeler assigns "Warmup" reliably)
+      COOLDOWN → cooldown_segment  (distinct so labeler assigns "Cooldown" reliably)
     """
 
-    def test_warmup_maps_to_run_segment(self, typed_splits):
-        """laps[0] is WARMUP → treated as run_segment (still running pace)."""
+    def test_warmup_maps_to_warmup_segment(self, typed_splits):
+        """laps[0] is WARMUP → warmup_segment (distinct from run_segment)."""
         result = normalize_typed_split(typed_splits[0], split_index=0)
-        assert result["split_type"] == "run_segment"
+        assert result["split_type"] == "warmup_segment"
 
     def test_active_maps_to_run_segment(self, typed_splits):
         """laps[1] is ACTIVE → run_segment."""

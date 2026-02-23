@@ -121,6 +121,48 @@ def _elevation_grade_around(
     return elev_change / dist_change
 
 
+def detect_bonk_per_segment(
+    points: List[TimeseriesPoint],
+    lap_segments,  # List[LapSegment] — duck-typed to avoid circular import
+    **kwargs,
+) -> List[BonkEvent]:
+    """
+    Segment-aware bonk detection.
+
+    Filters the timeseries to only include points that fall within active
+    (run_segment) laps before running detect_bonk().  This prevents rest
+    intervals and walk breaks from triggering false-positive bonk events.
+
+    Args:
+        points: Full activity timeseries.
+        lap_segments: List of LapSegment objects (from build_lap_segments).
+        **kwargs: Forwarded to detect_bonk() (thresholds, windows, etc.).
+
+    Returns:
+        List of BonkEvent detected within active laps only.
+    """
+    if not points or not lap_segments:
+        return []
+
+    # Collect time windows belonging to active (run) laps
+    active_windows = [
+        (seg.start_elapsed_s, seg.end_elapsed_s)
+        for seg in lap_segments
+        if seg.is_active()
+    ]
+
+    if not active_windows:
+        return []
+
+    # Filter timeseries to only active-lap points
+    active_points = [
+        p for p in points
+        if any(start <= p.elapsed_seconds < end for start, end in active_windows)
+    ]
+
+    return detect_bonk(active_points, **kwargs)
+
+
 def detect_bonk(
     points: List[TimeseriesPoint],
     pace_drop_threshold: float = 0.20,   # 20% pace drop = significant

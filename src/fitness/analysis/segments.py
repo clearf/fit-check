@@ -1,9 +1,13 @@
 """
-Per-mile segment builder.
+Segment builders for run analysis.
 
-Slices a run's timeseries into one-mile segments and computes per-segment
-statistics: average pace, average HR, elevation grade, grade-adjusted pace
-(GAP), and HR zone distribution.
+Two segment types:
+  - LapSegment: one per Garmin lap (Warmup / Run N / Walk N / Cooldown),
+                built from ActivitySplit records stored in the DB.
+  - RunSegment: legacy per-mile segments (kept for backward compat with prompts).
+
+LapSegment is the preferred representation for charts and bonk detection.
+RunSegment is still produced for the AI debrief prompt.
 
 One mile = 1609.344 metres (standard).
 """
@@ -17,6 +21,38 @@ from fitness.analysis.timeseries import TimeseriesPoint
 
 METERS_PER_MILE = 1609.344
 MAX_HR_DEFAULT = 185
+
+# A lap whose run_segment distance is below this threshold is treated as
+# Warmup (if first) or Cooldown (if last).
+WARMUP_COOLDOWN_DISTANCE_M = 1000.0
+
+
+@dataclass
+class LapSegment:
+    """
+    Statistics for one Garmin lap (intensityType-based segment).
+
+    Labels follow the pattern:
+      Warmup | Run 1, Run 2, … | Walk 1, Walk 2, … | Cooldown
+    """
+    label: str                          # "Warmup", "Run 1", "Walk 1", "Cooldown"
+    split_type: str                     # "run_segment" | "walk_segment"
+    start_elapsed_s: int
+    end_elapsed_s: int
+    duration_seconds: float
+    distance_meters: float
+    avg_pace_s_per_km: float
+    avg_hr: float
+    hr_zone_distribution: Dict[int, float] = field(default_factory=dict)
+
+    @property
+    def distance_miles(self) -> float:
+        return self.distance_meters / METERS_PER_MILE
+
+    def is_active(self) -> bool:
+        """True for run/warmup/cooldown laps (eligible for bonk detection baseline).
+        Walk and recovery segments are excluded."""
+        return self.split_type in ("run_segment", "warmup_segment", "cooldown_segment")
 
 
 @dataclass
@@ -55,6 +91,97 @@ def _grade_pct_for_segment(pts: List[TimeseriesPoint]) -> float:
         return 0.0
 
     return (elev_change / dist_change) * 100.0  # convert to percent
+
+
+def build_lap_segments(
+    splits,  # List[ActivitySplit] — avoid circular import by using duck typing
+    timeseries: List[TimeseriesPoint],
+    max_hr: int = MAX_HR_DEFAULT,
+) -> List[LapSegment]:
+    """
+    Build LapSegment objects from stored ActivitySplit records.
+
+    Labeling priority (first match wins):
+      1. warmup_segment type → "Warmup"
+      2. cooldown_segment type → "Cooldown"
+      3. Heuristic: first run_segment with distance < WARMUP_COOLDOWN_DISTANCE_M → "Warmup"
+      4. Heuristic: last segment with distance < WARMUP_COOLDOWN_DISTANCE_M → "Cooldown"
+      5. walk_segment / recovery → "Walk 1", "Walk 2", …
+      6. run_segment → "Run 1", "Run 2", …
+
+    HR zone distribution is computed from the timeseries points that fall
+    within each lap's elapsed-second window.  If timeseries is empty, zones
+    are all-zero dicts.
+
+    Args:
+        splits: Ordered list of ActivitySplit model instances.
+        timeseries: Full activity timeseries (may be empty).
+        max_hr: Athlete max HR for zone classification.
+
+    Returns:
+        List of LapSegment, one per split, in order.
+    """
+    if not splits:
+        return []
+
+    n = len(splits)
+    # Pre-compute heuristic warmup/cooldown indices (fallback when explicit
+    # intensityType wasn't preserved as warmup_segment/cooldown_segment).
+    heuristic_warmup_idx: Optional[int] = None
+    heuristic_cooldown_idx: Optional[int] = None
+
+    if splits[0].split_type == "run_segment" and splits[0].distance_meters < WARMUP_COOLDOWN_DISTANCE_M:
+        heuristic_warmup_idx = 0
+
+    if n > 1 and splits[-1].split_type in ("run_segment", "walk_segment") \
+            and splits[-1].distance_meters < WARMUP_COOLDOWN_DISTANCE_M:
+        if (n - 1) != heuristic_warmup_idx:
+            heuristic_cooldown_idx = n - 1
+
+    run_counter = 0
+    walk_counter = 0
+    segments: List[LapSegment] = []
+
+    for i, sp in enumerate(splits):
+        start_s = sp.start_elapsed_seconds
+        end_s = start_s + int(sp.duration_seconds)
+
+        # HR zones from timeseries window
+        window_pts = [
+            p for p in timeseries
+            if start_s <= p.elapsed_seconds < end_s
+        ]
+        zones = _hr_zone_distribution(window_pts, max_hr)
+
+        # Determine label — explicit types take priority over heuristics
+        if sp.split_type == "warmup_segment":
+            label = "Warmup"
+        elif sp.split_type == "cooldown_segment":
+            label = "Cooldown"
+        elif i == heuristic_warmup_idx:
+            label = "Warmup"
+        elif i == heuristic_cooldown_idx:
+            label = "Cooldown"
+        elif sp.split_type == "walk_segment":
+            walk_counter += 1
+            label = f"Walk {walk_counter}"
+        else:
+            run_counter += 1
+            label = f"Run {run_counter}"
+
+        segments.append(LapSegment(
+            label=label,
+            split_type=sp.split_type,
+            start_elapsed_s=start_s,
+            end_elapsed_s=end_s,
+            duration_seconds=sp.duration_seconds,
+            distance_meters=sp.distance_meters,
+            avg_pace_s_per_km=sp.avg_pace_seconds_per_km or 0.0,
+            avg_hr=sp.avg_hr or 0.0,
+            hr_zone_distribution=zones,
+        ))
+
+    return segments
 
 
 def _hr_zone_distribution(

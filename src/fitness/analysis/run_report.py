@@ -13,10 +13,10 @@ from typing import List, Optional
 
 from sqlmodel import Session, select
 
-from fitness.analysis.bonk import BonkEvent, detect_bonk
+from fitness.analysis.bonk import BonkEvent, detect_bonk_per_segment
 from fitness.analysis.galloway import GallowaySegments, detect_galloway_segments
 from fitness.analysis.heart_rate import CardiacDriftEvent, detect_cardiac_drift
-from fitness.analysis.segments import RunSegment, build_mile_segments
+from fitness.analysis.segments import LapSegment, RunSegment, build_lap_segments, build_mile_segments
 from fitness.analysis.timeseries import TimeseriesPoint, datapoints_to_timeseries
 from fitness.models.activity import Activity, ActivityDatapoint, ActivitySplit
 from fitness.models.wellness import BodyBatteryRecord, HRVRecord, SleepRecord
@@ -32,6 +32,7 @@ class RunReport:
     activity: Activity
     timeseries: List[TimeseriesPoint]
     mile_segments: List[RunSegment]
+    lap_segments: List[LapSegment]
     bonk_events: List[BonkEvent]
     cardiac_drift: Optional[CardiacDriftEvent]
     galloway: GallowaySegments
@@ -112,9 +113,14 @@ def build_run_report(activity_id: int, engine) -> RunReport:
     # ── Build timeseries ──────────────────────────────────────────────────────
     timeseries = datapoints_to_timeseries(dp_dicts)
 
+    # ── Build lap segments (Garmin lap structure) ─────────────────────────────
+    lap_segments = build_lap_segments(splits, timeseries)
+
     # ── Run analysis algorithms ───────────────────────────────────────────────
     mile_segments = build_mile_segments(timeseries)
-    bonk_events = detect_bonk(timeseries)
+    # Bonk detection uses only active (run) lap windows to avoid false positives
+    # from rest/walk intervals in structured workouts.
+    bonk_events = detect_bonk_per_segment(timeseries, lap_segments)
     cardiac_drift = detect_cardiac_drift(timeseries)
 
     # Galloway detection from typed splits (convert ActivitySplit → dict list)
@@ -137,6 +143,7 @@ def build_run_report(activity_id: int, engine) -> RunReport:
         activity=activity,
         timeseries=timeseries,
         mile_segments=mile_segments,
+        lap_segments=lap_segments,
         bonk_events=bonk_events,
         cardiac_drift=cardiac_drift,
         galloway=galloway,
