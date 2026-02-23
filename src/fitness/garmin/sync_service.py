@@ -14,7 +14,7 @@ Idempotency: uses garmin_activity_id unique constraint. On conflict, the
 existing Activity row is reused and its child rows (datapoints, splits) are
 deleted and re-inserted so stale data is never left behind.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlmodel import Session, select
@@ -175,9 +175,24 @@ class GarminSyncService:
                 s.delete(sp)
             s.flush()
 
-            # Insert normalized splits
+            # Insert normalized splits, computing start_elapsed_seconds from
+            # startTimeGMT relative to the activity's start time.
+            act_start = activity.start_time_utc.replace(tzinfo=timezone.utc)
             for i, raw in enumerate(raw_splits):
                 fields = normalize_typed_split(raw, split_index=i)
+                # Override the placeholder 0 with a real elapsed offset derived
+                # from the lap's startTimeGMT timestamp.
+                start_gmt = raw.get("startTimeGMT") or raw.get("startTime")
+                if start_gmt and isinstance(start_gmt, str):
+                    try:
+                        lap_dt = datetime.strptime(
+                            start_gmt.split(".")[0], "%Y-%m-%dT%H:%M:%S"
+                        ).replace(tzinfo=timezone.utc)
+                        fields["start_elapsed_seconds"] = max(
+                            0, int((lap_dt - act_start).total_seconds())
+                        )
+                    except ValueError:
+                        pass  # leave the normalizer's value as-is
                 split = ActivitySplit(
                     activity_id=activity.id,
                     user_id=activity.user_id,
