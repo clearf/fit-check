@@ -25,7 +25,7 @@ from fitness.models.activity import Activity
 from fitness.prompts.debrief import build_debrief_prompt, build_debrief_system_prompt
 from fitness.prompts.trends import build_trends_prompt
 from fitness.prompts.voice import build_voice_query_prompt
-from fitness.prompts.charts import make_run_overview_chart, make_elevation_chart
+from fitness.prompts.charts import make_run_overview_chart
 
 
 async def handle_lastrun(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -179,17 +179,6 @@ async def _send_run_debrief(
     except Exception:
         pass  # Charts are best-effort; don't block the debrief
 
-    # Send elevation chart if data available
-    try:
-        result = make_elevation_chart(report)
-        if result:
-            elev_bytes, elev_caption = result
-            await update.message.reply_photo(
-                photo=io.BytesIO(elev_bytes),
-                caption=elev_caption[:1024],
-            )
-    except Exception:
-        pass
 
     # Build and send Claude debrief
     prompt = build_debrief_prompt(report, reflection=reflection)

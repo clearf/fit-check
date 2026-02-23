@@ -26,7 +26,7 @@ from fitness.analysis.timeseries import TimeseriesPoint, datapoints_to_timeserie
 from fitness.garmin.fit_parser import parse_fit_file
 from fitness.garmin.normalizer import normalize_typed_split
 from fitness.models.activity import Activity, ActivitySplit
-from fitness.prompts.charts import make_elevation_chart, make_run_overview_chart
+from fitness.prompts.charts import make_run_overview_chart
 
 FIXTURES = Path(__file__).parent.parent / "tests" / "fixtures"
 
@@ -125,16 +125,6 @@ def main():
     out.write_bytes(png_bytes)
     print(f"  Saved to {out}  ({len(png_bytes)//1024}KB)")
     print(f"  Caption: {caption}")
-
-    print("\nRendering elevation chart...")
-    result = make_elevation_chart(report)
-    if result:
-        elev_bytes, _ = result
-        elev_out = Path("/tmp/preview_elevation.png")
-        elev_out.write_bytes(elev_bytes)
-        print(f"  Saved to {elev_out}  ({len(elev_bytes)//1024}KB)")
-    else:
-        print("  No elevation data — skipped")
 
     print("\nDone. Open /tmp/preview_chart.png to inspect.")
 
