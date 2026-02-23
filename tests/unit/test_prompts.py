@@ -17,7 +17,7 @@ from fitness.analysis.bonk import BonkEvent
 from fitness.analysis.galloway import GallowaySegments
 from fitness.analysis.heart_rate import CardiacDriftEvent
 from fitness.analysis.run_report import RunReport
-from fitness.analysis.segments import RunSegment
+from fitness.analysis.segments import LapSegment, RunSegment
 from fitness.models.activity import Activity
 from fitness.models.wellness import HRVRecord, SleepRecord
 from fitness.prompts.debrief import build_debrief_prompt, build_debrief_system_prompt
@@ -73,6 +73,28 @@ def make_galloway(
         avg_walk_pace_s_per_km=avg_walk_pace,
         avg_run_hr=avg_run_hr,
         avg_walk_hr=avg_walk_hr,
+    )
+
+
+def make_lap_segment(
+    label: str = "Run 1",
+    split_type: str = "run_segment",
+    start_elapsed_s: int = 0,
+    end_elapsed_s: int = 180,
+    avg_pace_s_per_km: float = 312.0,
+    avg_hr: float = 148.0,
+    distance_meters: float = 500.0,
+) -> LapSegment:
+    return LapSegment(
+        label=label,
+        split_type=split_type,
+        start_elapsed_s=start_elapsed_s,
+        end_elapsed_s=end_elapsed_s,
+        duration_seconds=float(end_elapsed_s - start_elapsed_s),
+        distance_meters=distance_meters,
+        avg_pace_s_per_km=avg_pace_s_per_km,
+        avg_hr=avg_hr,
+        hr_zone_distribution={1: 0.1, 2: 0.3, 3: 0.3, 4: 0.25, 5: 0.05},
     )
 
 
@@ -165,17 +187,49 @@ class TestBuildDebriefPrompt:
         result = build_debrief_prompt(report)
         assert "Galloway" not in result
 
-    def test_mile_table_when_segments_provided(self):
+    def test_lap_segment_section_when_lap_segments_provided(self):
+        segs = [
+            make_lap_segment(label="Run 1", start_elapsed_s=0, end_elapsed_s=180),
+            make_lap_segment(label="Walk 1", split_type="walk_segment", start_elapsed_s=180, end_elapsed_s=240),
+            make_lap_segment(label="Run 2", start_elapsed_s=240, end_elapsed_s=420),
+        ]
+        report = make_run_report(lap_segments=segs)
+        result = build_debrief_prompt(report)
+        assert "Lap Segments" in result
+        assert "Run 1" in result
+        assert "Walk 1" in result
+        assert "Run 2" in result
+
+    def test_no_lap_segment_section_when_empty(self):
+        report = make_run_report(lap_segments=[])
+        result = build_debrief_prompt(report)
+        assert "Lap Segments" not in result
+
+    def test_lap_segment_galloway_heading_when_galloway(self):
+        seg = make_lap_segment(label="Run 1")
+        report = make_run_report(
+            lap_segments=[seg],
+            galloway=make_galloway(is_galloway=True),
+        )
+        result = build_debrief_prompt(report)
+        assert "Lap Segments (Galloway)" in result
+
+    def test_lap_segment_plain_heading_when_not_galloway(self):
+        seg = make_lap_segment(label="Run 1")
+        report = make_run_report(
+            lap_segments=[seg],
+            galloway=make_galloway(is_galloway=False),
+        )
+        result = build_debrief_prompt(report)
+        assert "## Lap Segments\n" in result
+        assert "Galloway" not in result or "## Galloway" not in result
+
+    def test_no_mile_table_in_output(self):
         segs = [make_run_segment(label=i) for i in range(1, 4)]
         report = make_run_report(mile_segments=segs)
         result = build_debrief_prompt(report)
-        assert "Mile-by-Mile" in result
-        assert "| Mile |" in result
-
-    def test_no_mile_table_when_no_segments(self):
-        report = make_run_report(mile_segments=[])
-        result = build_debrief_prompt(report)
         assert "Mile-by-Mile" not in result
+        assert "| Mile |" not in result
 
     def test_bonk_section_when_detected(self):
         bonk = BonkEvent(

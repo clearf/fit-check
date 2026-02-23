@@ -86,29 +86,10 @@ def build_debrief_prompt(
         )
         lines.append("")
 
-    # ── Mile-by-mile table ─────────────────────────────────────────────────────
-    if report.mile_segments:
-        lines.append("## Mile-by-Mile")
-        lines.append(
-            "| Mile | Pace    | Avg HR | Elevation | GAP     | Notes |"
-        )
-        lines.append(
-            "|------|---------|--------|-----------|---------|-------|"
-        )
-        for seg in report.mile_segments:
-            elev_str = (
-                f"{seg.grade_pct * 52.8:+.0f}ft"
-                if abs(seg.grade_pct) >= 0.5
-                else "flat"
-            )
-            notes = _segment_notes(seg, report)
-            lines.append(
-                f"| {seg.label} | {format_pace(seg.avg_pace_s_per_km)} "
-                f"| {int(seg.avg_hr)} "
-                f"| {elev_str} "
-                f"| {format_pace(seg.gap_s_per_km)} "
-                f"| {notes} |"
-            )
+    # ── Lap segments with per-segment timeseries ──────────────────────────────
+    seg_section = _format_lap_segments(report)
+    if seg_section:
+        lines.append(seg_section)
         lines.append("")
 
     # ── Bonk events ────────────────────────────────────────────────────────────
@@ -183,8 +164,12 @@ def build_debrief_prompt(
         lines.append("")
 
     lines.append(
-        "_Please give a coaching debrief. Cite specific mile markers and "
-        "times. Ask one follow-up question if relevant context is missing._"
+        "_Please give a coaching debrief. Reference specific segment labels "
+        "(e.g., 'Run 3', 'Walk 2') and elapsed times when citing the data. "
+        "Use the per-segment timeseries to comment on intra-segment dynamics "
+        "(e.g., HR rising within a run interval, pace fading mid-rep, HR "
+        "recovery during walk breaks). Ask one follow-up question if relevant "
+        "context is missing._"
     )
 
     return "\n".join(lines)
@@ -195,12 +180,21 @@ def build_debrief_system_prompt() -> str:
     return (
         "You are a knowledgeable, encouraging running coach providing a post-run debrief. "
         "Your analysis is grounded in the objective data provided — pace, HR, elevation, "
-        "and detected events. Be specific: cite exact mile markers, elapsed times, and "
-        "bpm values. Use a coaching voice that is curious and supportive, never judgmental. "
+        "and detected events. Be specific: cite specific segment labels and elapsed times "
+        "when referencing the data. Use a coaching voice that is curious and supportive, "
+        "never judgmental. "
         "When the data shows something notable (bonk, cardiac drift, great negative split), "
         "explain the physiology briefly in plain language. "
         "If the runner has shared a subjective reflection, integrate both the data evidence "
         "and their experience — explain whether the data corroborates what they felt. "
+        "\n\n"
+        "When per-segment timeseries data is provided, analyze the shape of each interval — "
+        "not just the average. For run segments: is pace holding steady or fading mid-rep? "
+        "Is HR rising within the rep (indicating accumulated fatigue)? For walk segments: "
+        "does HR drop meaningfully before the next run begins (adequate recovery)? "
+        "Trend across run intervals: is each successive run interval slower or more costly "
+        "(higher HR for same pace)? Use this to distinguish acute events (a single bad rep) "
+        "from progressive fatigue. "
         "\n\n"
         "When a Workout Intent section is provided, evaluate actual performance against the "
         "structured plan. For speed/interval workouts, check whether reps hit target pace "
@@ -219,23 +213,94 @@ def build_debrief_system_prompt() -> str:
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def _segment_notes(seg, report: RunReport) -> str:
-    """Generate brief notes for a mile segment table cell."""
-    notes = []
-
-    for bonk in report.bonk_events:
+def _find_bonk_for_segment(seg, bonk_events):
+    """Return the first BonkEvent whose onset falls within seg's time window, or None."""
+    for bonk in bonk_events:
         if seg.start_elapsed_s <= bonk.elapsed_seconds_onset <= seg.end_elapsed_s:
-            notes.append("bonk onset")
+            return bonk
+    return None
 
-    if seg.grade_pct >= 3.0:
-        notes.append("climb")
-    elif seg.grade_pct <= -3.0:
-        notes.append("descent")
 
-    gap_diff = seg.avg_pace_s_per_km - seg.gap_s_per_km
-    if gap_diff > 15:
-        notes.append("grade-adjusted faster")
-    elif gap_diff < -15:
-        notes.append("grade-adjusted slower")
+def _format_lap_segments(report: RunReport) -> str:
+    """
+    Build a compact per-segment timeseries block for the debrief prompt.
 
-    return ", ".join(notes) if notes else ""
+    Each lap segment gets a one-line header plus a CSV of timeseries data
+    sampled every 5 seconds, giving Claude visibility into intra-segment
+    pace and HR dynamics rather than just averages.
+
+    Returns an empty string if there are no lap segments.
+    """
+    if not report.lap_segments:
+        return ""
+
+    heading = (
+        "## Lap Segments (Galloway)"
+        if report.galloway.is_galloway
+        else "## Lap Segments"
+    )
+    section_lines = [heading]
+
+    for seg in report.lap_segments:
+        # ── Segment header ────────────────────────────────────────────────
+        start_mm = seg.start_elapsed_s // 60
+        start_ss = seg.start_elapsed_s % 60
+        end_mm = seg.end_elapsed_s // 60
+        end_ss = seg.end_elapsed_s % 60
+        time_range = f"@{start_mm}:{start_ss:02d}–{end_mm}:{end_ss:02d}"
+
+        parts = [f"### {seg.label} ({time_range}, {seg.distance_miles:.2f}mi"]
+        if seg.avg_pace_s_per_km and seg.avg_pace_s_per_km > 0:
+            parts.append(f", avg {format_pace(seg.avg_pace_s_per_km)}/mi")
+        if seg.avg_hr and seg.avg_hr > 0:
+            parts.append(f", avg HR {int(seg.avg_hr)} bpm")
+        parts.append(")")
+
+        is_warmup = seg.label == "Warmup" or seg.split_type == "warmup_segment"
+        is_cooldown = seg.label == "Cooldown" or seg.split_type == "cooldown_segment"
+        if is_warmup:
+            parts.append("  (warmup)")
+        elif is_cooldown:
+            parts.append("  (cooldown)")
+
+        # Bonk annotation
+        bonk = _find_bonk_for_segment(seg, report.bonk_events)
+        if bonk:
+            recovery_str = "recovered" if bonk.recovered else "did not recover"
+            parts.append(
+                f"  \u26a0 BONK ONSET: {format_pace(bonk.pre_bonk_pace_s_per_km)}/mi"
+                f" \u2192 {format_pace(bonk.bonk_pace_s_per_km)}/mi, "
+                f"HR {bonk.pre_bonk_hr:.0f}\u2192{bonk.peak_hr:.0f} bpm, "
+                f"{recovery_str}"
+            )
+
+        section_lines.append("".join(parts))
+
+        # ── Per-segment timeseries CSV ────────────────────────────────────
+        seg_points = [
+            p for p in report.timeseries
+            if seg.start_elapsed_s <= p.elapsed_seconds <= seg.end_elapsed_s
+            and p.elapsed_seconds % 5 == 0
+        ]
+
+        if len(seg_points) >= 2:
+            section_lines.append("elapsed_s,hr,pace_s_per_km,elev_m")
+            for p in seg_points:
+                hr_str = str(p.heart_rate) if p.heart_rate is not None else ""
+                pace_str = (
+                    f"{p.pace_seconds_per_km:.1f}"
+                    if p.pace_seconds_per_km is not None
+                    else ""
+                )
+                elev_str = (
+                    f"{p.elevation_meters:.1f}"
+                    if p.elevation_meters is not None
+                    else ""
+                )
+                section_lines.append(
+                    f"{p.elapsed_seconds},{hr_str},{pace_str},{elev_str}"
+                )
+
+        section_lines.append("")
+
+    return "\n".join(section_lines)
