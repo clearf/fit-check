@@ -14,8 +14,11 @@ Single-user Telegram bot that syncs Garmin Connect data and provides AI-powered 
 
 ## VPS Access
 
+The VPS IP is stored in `.env` as `VPS_IP`. Load it before running any deploy commands:
+
 ```bash
-ssh fitness@<vps-ip>
+export VPS_IP=$(grep VPS_IP .env | cut -d= -f2)
+ssh fitness@$VPS_IP
 ```
 
 Key-based auth. The `fitness` user has passwordless sudo for service control only.
@@ -27,13 +30,14 @@ Key-based auth. The `fitness` user has passwordless sudo for service control onl
 After pushing code changes, deploy to VPS:
 
 ```bash
-ssh fitness@<vps-ip> "cd ~/fitness && git pull && .venv/bin/pip install -e . && sudo -n systemctl restart fitness-bot"
+export VPS_IP=$(grep VPS_IP .env | cut -d= -f2)
+git push && ssh fitness@$VPS_IP "cd ~/fitness && git pull && .venv/bin/pip install -e . && sudo -n systemctl restart fitness-bot"
 ```
 
 Check it started cleanly:
 
 ```bash
-ssh fitness@<vps-ip> "journalctl -u fitness-bot --no-pager -n 50"
+ssh fitness@$VPS_IP "journalctl -u fitness-bot --no-pager -n 50"
 ```
 
 ---
