@@ -27,7 +27,25 @@
       "Bash(/Volumes/Storage/Users/clearf/Documents/repos/fitness/.venv/bin/pip show:*)",
       "Bash(/Volumes/Storage/Users/clearf/Documents/repos/fitness/.venv/bin/python:*)",
       "Bash(unzip:*)",
-      "Bash(/Volumes/Storage/Users/clearf/Documents/repos/fitness/.venv/bin/python3:*)"
+      "Bash(/Volumes/Storage/Users/clearf/Documents/repos/fitness/.venv/bin/python3:*)",
+      "Bash(source:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(xargs:*)",
+      "Bash(/tmp/scrub_pii.py:*)",
+      "Bash(grep:*)",
+      "Bash(__NEW_LINE_a9d8a1aa63c10b66__ echo \"\")",
+      "Bash(__NEW_LINE_b56ae77cade3f619__ echo \"\")",
+      "Bash(pytest:*)",
+      "Bash(git -C /Volumes/Storage/Users/clearf/Documents/repos/fitness log --oneline -10)",
+      "Bash(git -C /Volumes/Storage/Users/clearf/Documents/repos/fitness add PROJECT_BRIEF.md)",
+      "Bash(git -C /Volumes/Storage/Users/clearf/Documents/repos/fitness commit -m \"docs: add PROJECT_BRIEF.md for session continuity\n\nCovers architecture, key API quirks, test patterns, coverage gaps,\nand recent bug history to orient a new Claude Code session quickly.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\")",
+      "Bash(git -C /Volumes/Storage/Users/clearf/Documents/repos/fitness push origin main)",
+      "Bash(python scripts/preview_chart.py:*)",
+      "Bash(open:*)",
+      "Bash(/dev/null:*)",
+      "Bash(python:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(docker run:*)"
     ]
   }
 }

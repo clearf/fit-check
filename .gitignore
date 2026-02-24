@@ -14,6 +14,7 @@ htmlcov/
 .ruff_cache/
 .mypy_cache/
 .garmin_tokens.json
+docker/.env.docker
 *.fit
 # Keep sample fixture FIT file
 !tests/fixtures/sample_activity.fit
