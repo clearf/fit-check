@@ -221,6 +221,7 @@ patch("fitness.garmin.sync_service.GarminSyncService", ...)
 
 Roughly in priority order:
 
+
 1. **Target pace overlay on charts (Phase 2)** — Garmin structured workouts include per-step target pace ranges, linked to laps via `wktStepIndex` on each `lapDTO`. The `associatedWorkoutId` is already stored in `raw_summary_json`. Implementation requires: (a) fetching the workout definition via `get_workout(workoutId)` during sync, (b) storing step targets (pace low/high, HR zone) keyed by `wktStepIndex`, (c) rendering a grey target band behind the actual pace line in `make_run_overview_chart()` — matching the Garmin Connect web UI.
 
 2. **Re-sync existing activities** — After the `start_elapsed_seconds` fix (commit `381ba2a`), any previously-synced activities in the DB have all splits at t=0. A `/sync` command from Telegram (or `python -m fitness backfill`) will re-ingest them correctly.

@@ -1,0 +1,26 @@
+services:
+  claude:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: claude-sandbox:latest
+    container_name: claude-fitness
+
+    # Pass secrets and config via environment variables.
+    # Values come from the .env.docker file (see .env.docker.example).
+    env_file:
+      - .env.docker
+
+    # Keep stdin open for interactive Claude sessions
+    stdin_open: true
+    tty: true
+
+    # Resource limits appropriate for a CX23 (2 vCPU / 4GB RAM)
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "1.5"
+
+    # Restart policy: don't auto-restart (sessions are intentional)
+    restart: "no"
