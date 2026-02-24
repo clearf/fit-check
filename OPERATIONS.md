@@ -30,46 +30,42 @@ The `fitness` user cannot restart services — use `root` for `systemctl` comman
 
 ---
 
-## Standard Deploy (from local machine)
+## Git Workflow
+
+**Claude Code is responsible for commits and pushes.** Do not commit manually unless Claude is unavailable.
+
+**Standard practice: every completed feature/fix is committed, pushed, and deployed immediately.**
+
+Standard commit-push-deploy flow after making changes:
 
 ```bash
-# 1. Push code
+# 1. Commit
+git add <files>
+git commit -m "type(scope): description
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+
+# 2. Push
 git push
 
-# 2. Pull on VPS (run as the fitness user to avoid git safe.directory issues)
+# 3. Pull on VPS
 source .env
 ssh root@$VPS_IP "su - fitness -c 'cd /home/fitness/fitness && git pull'"
 
-# 3. Restart the service (requires root)
+# 4. Restart service
 ssh root@$VPS_IP "systemctl restart fitness-bot"
 
-# 4. Verify clean startup
+# 5. Verify startup
 ssh root@$VPS_IP "journalctl -u fitness-bot --no-pager -n 30"
 ```
 
-If pip dependencies changed (new packages in `pyproject.toml`), install them before restarting:
+If pip dependencies changed (new packages in `pyproject.toml`):
 
 ```bash
 ssh root@$VPS_IP "su - fitness -c 'cd /home/fitness/fitness && .venv/bin/pip install -e . -q'"
 ```
 
----
-
-## Git Workflow
-
-**Claude Code is responsible for commits and pushes.** Do not commit manually unless Claude is unavailable.
-
-Standard commit flow after making changes:
-
-```bash
-git add <files>
-git commit -m "type(scope): description
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
-git push
-```
-
-Then run the deploy steps above.
+Then restart and verify as above.
 
 ---
 
@@ -186,4 +182,6 @@ ssh root@$VPS_IP "journalctl -u fitness-bot --no-pager -n 100"
 | `/debrief [id]` | Debrief a specific activity by ID |
 | `/trends` | 30-day training summary |
 | `/sync` | Trigger an on-demand Garmin sync |
-| _(any text)_ | Free-form question answered with run context |
+| `/clear` | Clear conversation history for the current run |
+| `/clearall` | Clear all run conversation histories |
+| _(any text)_ | Follow-up question in current run's conversation |

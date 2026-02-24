@@ -6,6 +6,10 @@ Bot data keys (set in build_bot_app):
   context.bot_data["engine"]   — SQLAlchemy engine
   context.bot_data["claude"]   — ClaudeClient instance
   context.bot_data["whisper"]  — WhisperClient instance (None if no OPENAI_API_KEY)
+
+Chat data keys (persisted per-chat via PicklePersistence):
+  context.chat_data["run_histories"]       — dict mapping activity_id → messages list
+  context.chat_data["current_activity_id"] — int, the run currently being discussed
 """
 import asyncio
 import io
@@ -28,12 +32,18 @@ from fitness.prompts.voice import build_voice_query_prompt
 from fitness.prompts.charts import make_run_overview_chart
 
 
+def _get_run_histories(context: ContextTypes.DEFAULT_TYPE) -> dict:
+    """Return the run_histories dict from chat_data, creating it if absent."""
+    if "run_histories" not in context.chat_data:
+        context.chat_data["run_histories"] = {}
+    return context.chat_data["run_histories"]
+
+
 async def handle_lastrun(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     /lastrun — fetch the most recent activity, run full analysis, send debrief + charts.
     """
     engine = context.bot_data["engine"]
-    claude = context.bot_data["claude"]
 
     await update.message.reply_chat_action(ChatAction.TYPING)
 
@@ -124,32 +134,61 @@ async def handle_sync(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     asyncio.create_task(_trigger_sync_background(context))
 
 
+async def handle_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /clear — clear conversation history for the current run only.
+    """
+    activity_id = context.chat_data.get("current_activity_id")
+    if activity_id is not None:
+        run_histories = _get_run_histories(context)
+        run_histories.pop(activity_id, None)
+    await update.message.reply_text("Conversation for this run cleared.")
+
+
+async def handle_clearall(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /clearall — clear all run conversation histories.
+    """
+    context.chat_data["run_histories"] = {}
+    await update.message.reply_text("All run conversation histories cleared.")
+
+
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Free-text messages — treated as run reflection or questions.
-    Fetches the most recent run report and incorporates the text as context.
+    Free-text messages — appended to current run's conversation history if one is active,
+    otherwise falls back to single-turn with the most recent run report.
     """
-    engine = context.bot_data["engine"]
     claude = context.bot_data["claude"]
     text = update.message.text or ""
 
     await update.message.reply_chat_action(ChatAction.TYPING)
 
-    # Try to attach most recent run report
-    report: Optional[RunReport] = None
-    with Session(engine) as s:
-        activity = s.exec(
-            select(Activity).order_by(Activity.start_time_utc.desc())
-        ).first()
-    if activity:
-        try:
-            report = build_run_report(activity.id, engine)
-        except Exception:
-            pass
-
-    prompt = build_voice_query_prompt(text, report)
+    activity_id = context.chat_data.get("current_activity_id")
     system = build_debrief_system_prompt()
-    response = await claude.complete(prompt, system_prompt=system)
+
+    if activity_id is not None:
+        run_histories = _get_run_histories(context)
+        history = run_histories.setdefault(activity_id, [])
+        history.append({"role": "user", "content": text})
+        response = await claude.complete_with_history(history, system_prompt=system)
+        history.append({"role": "assistant", "content": response})
+    else:
+        # No active run — fall back to single-turn with most recent run context
+        engine = context.bot_data["engine"]
+        report: Optional[RunReport] = None
+        with Session(engine) as s:
+            activity = s.exec(
+                select(Activity).order_by(Activity.start_time_utc.desc())
+            ).first()
+        if activity:
+            try:
+                report = build_run_report(activity.id, engine)
+            except Exception:
+                pass
+
+        prompt = build_voice_query_prompt(text, report)
+        response = await claude.complete(prompt, system_prompt=system)
+
     await update.message.reply_text(response)
 
 
@@ -161,7 +200,12 @@ async def _send_run_debrief(
     activity_id: int,
     reflection: Optional[str],
 ) -> None:
-    """Build RunReport, send chart photo(s), then send Claude debrief text."""
+    """Build RunReport, send chart photo(s), then send Claude debrief text.
+
+    Sets current_activity_id and manages per-run conversation history.
+    If history already exists for this activity, appends to it (continues
+    the prior conversation). Otherwise initializes from the debrief prompt.
+    """
     engine = context.bot_data["engine"]
     claude = context.bot_data["claude"]
 
@@ -179,11 +223,26 @@ async def _send_run_debrief(
     except Exception:
         pass  # Charts are best-effort; don't block the debrief
 
-
-    # Build and send Claude debrief
-    prompt = build_debrief_prompt(report, reflection=reflection)
+    # Set current run context
+    context.chat_data["current_activity_id"] = activity_id
+    run_histories = _get_run_histories(context)
     system = build_debrief_system_prompt()
-    response = await claude.complete(prompt, system_prompt=system, max_tokens=1500)
+
+    if activity_id in run_histories:
+        # Continuing an existing conversation — send a fresh debrief prompt appended to history
+        history = run_histories[activity_id]
+        prompt = build_debrief_prompt(report, reflection=reflection)
+        history.append({"role": "user", "content": prompt})
+        response = await claude.complete_with_history(history, system_prompt=system, max_tokens=1500)
+        history.append({"role": "assistant", "content": response})
+    else:
+        # First time debriefing this run — initialize history
+        prompt = build_debrief_prompt(report, reflection=reflection)
+        history = [{"role": "user", "content": prompt}]
+        response = await claude.complete_with_history(history, system_prompt=system, max_tokens=1500)
+        history.append({"role": "assistant", "content": response})
+        run_histories[activity_id] = history
+
     await update.message.reply_text(response)
 
 

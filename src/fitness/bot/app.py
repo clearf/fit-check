@@ -4,10 +4,13 @@ Telegram bot application factory.
 Builds and configures the python-telegram-bot Application with all
 handlers registered.
 """
+from pathlib import Path
+
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
+    PicklePersistence,
     filters,
 )
 
@@ -16,6 +19,8 @@ from fitness.bot.handlers import (
     handle_debrief,
     handle_trends,
     handle_sync,
+    handle_clear,
+    handle_clearall,
     handle_text_message,
     error_handler,
 )
@@ -42,7 +47,15 @@ def build_bot_app(
     Returns:
         Configured Application (not yet started).
     """
-    app = Application.builder().token(token).build()
+    persistence_path = Path.home() / ".fitness" / "chat_persistence.pickle"
+    persistence_path.parent.mkdir(parents=True, exist_ok=True)
+    persistence = PicklePersistence(
+        filepath=persistence_path,
+        store_bot_data=False,
+        store_user_data=False,
+    )
+
+    app = Application.builder().token(token).persistence(persistence).build()
 
     # Store shared resources in bot_data so handlers can access them
     app.bot_data["engine"] = engine
@@ -55,6 +68,8 @@ def build_bot_app(
     app.add_handler(CommandHandler("debrief", handle_debrief))
     app.add_handler(CommandHandler("trends", handle_trends))
     app.add_handler(CommandHandler("sync", handle_sync))
+    app.add_handler(CommandHandler("clear", handle_clear))
+    app.add_handler(CommandHandler("clearall", handle_clearall))
 
     # Voice messages
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))

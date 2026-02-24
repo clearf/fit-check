@@ -88,5 +88,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     prompt = build_voice_query_prompt(transcript, report)
     system = build_debrief_system_prompt()
-    response = await claude.complete(prompt, system_prompt=system, max_tokens=1500)
+
+    activity_id = context.chat_data.get("current_activity_id")
+    if activity_id is not None:
+        from fitness.bot.handlers import _get_run_histories
+        run_histories = _get_run_histories(context)
+        history = run_histories.setdefault(activity_id, [])
+        history.append({"role": "user", "content": prompt})
+        response = await claude.complete_with_history(history, system_prompt=system, max_tokens=1500)
+        history.append({"role": "assistant", "content": response})
+    else:
+        response = await claude.complete(prompt, system_prompt=system, max_tokens=1500)
+
     await update.message.reply_text(response)

@@ -251,7 +251,7 @@ def _format_lap_segments(report: RunReport) -> str:
 
         parts = [f"### {seg.label} ({time_range}, {seg.distance_miles:.2f}mi"]
         if seg.avg_pace_s_per_km and seg.avg_pace_s_per_km > 0:
-            parts.append(f", avg {format_pace(seg.avg_pace_s_per_km)}/mi")
+            parts.append(f", avg {format_pace(seg.avg_pace_s_per_km)}")
         if seg.avg_hr and seg.avg_hr > 0:
             parts.append(f", avg HR {int(seg.avg_hr)} bpm")
         parts.append(")")
@@ -268,8 +268,8 @@ def _format_lap_segments(report: RunReport) -> str:
         if bonk:
             recovery_str = "recovered" if bonk.recovered else "did not recover"
             parts.append(
-                f"  \u26a0 BONK ONSET: {format_pace(bonk.pre_bonk_pace_s_per_km)}/mi"
-                f" \u2192 {format_pace(bonk.bonk_pace_s_per_km)}/mi, "
+                f"  \u26a0 BONK ONSET: {format_pace(bonk.pre_bonk_pace_s_per_km)}"
+                f" \u2192 {format_pace(bonk.bonk_pace_s_per_km)}, "
                 f"HR {bonk.pre_bonk_hr:.0f}\u2192{bonk.peak_hr:.0f} bpm, "
                 f"{recovery_str}"
             )
@@ -284,14 +284,14 @@ def _format_lap_segments(report: RunReport) -> str:
         ]
 
         if len(seg_points) >= 2:
-            section_lines.append("elapsed_s,hr,pace_s_per_km,elev_m")
+            section_lines.append("elapsed_s,hr,pace_min_per_mi,elev_m")
             for p in seg_points:
                 hr_str = str(p.heart_rate) if p.heart_rate is not None else ""
-                pace_str = (
-                    f"{p.pace_seconds_per_km:.1f}"
-                    if p.pace_seconds_per_km is not None
-                    else ""
-                )
+                if p.pace_seconds_per_km is not None:
+                    pace_s_mi = p.pace_seconds_per_km * 1.60934
+                    pace_str = f"{int(pace_s_mi) // 60}:{int(pace_s_mi) % 60:02d}"
+                else:
+                    pace_str = ""
                 elev_str = (
                     f"{p.elevation_meters:.1f}"
                     if p.elevation_meters is not None
