@@ -89,6 +89,7 @@ python -m fitness         # run bot locally
 
 See `OPERATIONS.md` for full deploy steps, service management, and Garmin token refresh.
 
-- VPS IP: stored in local `.env` as `VPS_IP`
-- SSH as `root` (key-based): `source .env && ssh root@$VPS_IP`
-- Service: `systemd` unit `fitness-bot`, requires root to restart
+- VPS IP stored in local `.env` as `VPS_IP`
+- SSH as `fitness` user (key-based): `source .env && ssh fitness@$VPS_IP`
+- `fitness` user has passwordless sudo for `systemctl restart fitness-bot` and `systemctl status fitness-bot` only — no extra flags
+- Service: `systemd` unit `fitness-bot`
