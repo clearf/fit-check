@@ -21,10 +21,11 @@
 
 ## VPS Access
 
-VPS IP: `89.167.65.94`. SSH as `fitness` (key-based, from Claude Code Docker container):
+The VPS IP is stored in the **local** `.env` as `VPS_IP`. SSH as `fitness` (key-based):
 
 ```bash
-ssh fitness@89.167.65.94
+source .env
+ssh fitness@$VPS_IP
 ```
 
 The `fitness` user has passwordless sudo for exactly two commands:
@@ -76,33 +77,33 @@ Tokens are stored in `~/.fitness/garmin_session/` (`oauth1_token.json`, `oauth2_
 python -m fitness setup
 
 # Copy tokens to VPS:
-source .env
-scp ~/.fitness/garmin_session/oauth1_token.json root@$VPS_IP:/home/fitness/.fitness/garmin_session/
-scp ~/.fitness/garmin_session/oauth2_token.json root@$VPS_IP:/home/fitness/.fitness/garmin_session/
-ssh root@$VPS_IP "chown fitness:fitness /home/fitness/.fitness/garmin_session/*.json"
+scp ~/.fitness/garmin_session/oauth1_token.json fitness@$VPS_IP:/home/fitness/.fitness/garmin_session/
+scp ~/.fitness/garmin_session/oauth2_token.json fitness@$VPS_IP:/home/fitness/.fitness/garmin_session/
 
 # Restart on VPS:
-ssh root@$VPS_IP "systemctl restart fitness-bot"
+ssh fitness@$VPS_IP "sudo /usr/bin/systemctl restart fitness-bot"
 ```
 
 Tokens expire after several weeks to months. Re-run `python -m fitness setup` when they do.
 
 ---
 
-## Service Management (on VPS, as root)
+## Service Management (on VPS, as `fitness` user)
+
+The `fitness` user has passwordless sudo for exactly these two `systemctl` commands. Do not add extra flags — they break the sudoers match.
 
 ```bash
 # Restart
-systemctl restart fitness-bot
+ssh fitness@$VPS_IP "sudo /usr/bin/systemctl restart fitness-bot"
 
 # Status
-systemctl status fitness-bot
+ssh fitness@$VPS_IP "sudo /usr/bin/systemctl status fitness-bot"
 
-# Logs (live)
-journalctl -u fitness-bot -f
+# Logs (live) — no sudo needed for journalctl
+ssh fitness@$VPS_IP "journalctl -u fitness-bot -f"
 
 # Logs (last 50 lines)
-journalctl -u fitness-bot --no-pager -n 50
+ssh fitness@$VPS_IP "journalctl -u fitness-bot --no-pager -n 50"
 ```
 
 Service file location: `/etc/systemd/system/fitness-bot.service`
@@ -133,8 +134,7 @@ Garmin sync results (success or failure) are also reported via Telegram after `/
 If the bot goes silent, check the logs:
 
 ```bash
-source .env
-ssh root@$VPS_IP "journalctl -u fitness-bot --no-pager -n 100"
+ssh fitness@$VPS_IP "journalctl -u fitness-bot --no-pager -n 100"
 ```
 
 ---

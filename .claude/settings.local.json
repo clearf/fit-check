@@ -46,7 +46,8 @@
       "Bash(git -C /Volumes/Storage/Users/clearf/Documents/repos/fitness diff --cached)",
       "Bash(git -C /Volumes/Storage/Users/clearf/Documents/repos/fitness diff HEAD)",
       "Bash(git -C /Volumes/Storage/Users/clearf/Documents/repos/fitness add .claude/settings.local.json)",
-      "Bash(git -C /Volumes/Storage/Users/clearf/Documents/repos/fitness rebase --continue)"
+      "Bash(git -C /Volumes/Storage/Users/clearf/Documents/repos/fitness rebase --continue)",
+      "Bash(git stash:*)"
     ]
   }
 }
