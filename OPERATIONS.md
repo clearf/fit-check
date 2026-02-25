@@ -1,6 +1,8 @@
-# Fitness Bot — Operations Guide
+# Fitness Bot — Operations Reference
 
-Single-user Telegram bot that syncs Garmin Connect data and provides AI-powered run debriefs via Claude.
+> See `CLAUDE.md` for Claude Code workflow rules (TDD, commits, deploys).
+> See `PROJECT_BRIEF.md` for architecture and codebase details.
+> Use the `/commit` and `/deploy` skills for all commit and deploy operations.
 
 ---
 
@@ -30,37 +32,6 @@ The `fitness` user has passwordless sudo for exactly two commands:
 - `sudo /usr/bin/systemctl status fitness-bot`
 
 Note: extra flags (e.g. `--no-pager`) break the sudoers match — use the commands exactly as written above.
-
----
-
-## Git Workflow
-
-**Claude Code is responsible for commits and pushes.** Do not commit manually unless Claude is unavailable.
-
-**Standard practice: every completed feature/fix is committed, pushed, and deployed immediately.**
-
-Standard commit-push-deploy flow (run directly from Claude Code):
-
-```bash
-# 1. Commit
-git add <files>
-git commit -m "type(scope): description
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
-
-# 2. Push
-git push
-
-# 3. Pull on VPS + restart + verify
-ssh fitness@89.167.65.94 "cd /home/fitness/fitness && git pull && sudo /usr/bin/systemctl restart fitness-bot && sleep 3 && sudo /usr/bin/systemctl status fitness-bot"
-```
-
-If pip dependencies changed (new packages in `pyproject.toml`), install before restarting:
-
-```bash
-ssh fitness@89.167.65.94 "cd /home/fitness/fitness && .venv/bin/pip install -e . -q"
-```
-
 ---
 
 ## Database Migrations
