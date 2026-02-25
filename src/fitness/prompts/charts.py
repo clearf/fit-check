@@ -488,7 +488,11 @@ def _draw_segment_shading(
                           "#bb88ff", 0.10, "Drills")
             drills_start = drills_end = None
 
-        color, alpha = SHADE.get(seg.split_type, ("#888888", 0.10))
+        # Recovery laps (run_segment + wkt_step_type="recovery") shade like walks
+        if seg.wkt_step_type == "recovery":
+            color, alpha = SHADE["walk_segment"]
+        else:
+            color, alpha = SHADE.get(seg.split_type, ("#888888", 0.10))
         _shade_region(ax_pace, ax_hr, x0, x1, color, alpha)
 
     # Flush any trailing drills
