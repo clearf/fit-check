@@ -11,6 +11,7 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     PicklePersistence,
+    PersistenceInput,
     filters,
 )
 
@@ -51,8 +52,7 @@ def build_bot_app(
     persistence_path.parent.mkdir(parents=True, exist_ok=True)
     persistence = PicklePersistence(
         filepath=persistence_path,
-        store_bot_data=False,
-        store_user_data=False,
+        store_data=PersistenceInput(bot_data=False, user_data=False, chat_data=True, callback_data=False),
     )
 
     app = Application.builder().token(token).persistence(persistence).build()
