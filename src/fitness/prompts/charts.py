@@ -6,7 +6,8 @@ Each chart function returns (png_bytes, caption).
 
 Overview chart design:
   - 2 tall panels stacked: pace over time (top), HR over time (bottom)
-  - X-axis: elapsed time in minutes (what the runner feels, not distance)
+  - X-axis: display time in minutes (elapsed time with pauses compressed)
+  - Paused segments: compressed to MIN_PAUSE_DISPLAY_S width, cross-hatched background
   - Background shading by segment type:
       warmup/cooldown → dim teal
       active run      → teal
@@ -22,7 +23,7 @@ Overview chart design:
 import io
 import base64
 from statistics import median
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -68,6 +69,108 @@ SHADE = {
 
 MAX_HR_DEFAULT = 185
 
+# Pause compression
+# A gap between consecutive timeseries points larger than this (with no movement)
+# is treated as a watch-paused interval.
+MIN_PAUSE_GAP_S = 10
+MAX_PAUSE_MOVEMENT_M = 5.0
+# All pauses are compressed to this display width (seconds) regardless of real duration
+MIN_PAUSE_DISPLAY_S = 30
+
+
+# ─── Pause detection & display-time mapping ───────────────────────────────────
+
+def _detect_pauses(
+    pts: List[TimeseriesPoint],
+    min_gap_s: int = MIN_PAUSE_GAP_S,
+    max_movement_m: float = MAX_PAUSE_MOVEMENT_M,
+) -> List[Tuple[int, int]]:
+    """
+    Return list of (start_elapsed_s, end_elapsed_s) pause intervals.
+
+    A pause is a gap between consecutive timeseries points where:
+      - elapsed time jumps by more than min_gap_s seconds, AND
+      - cumulative distance barely changes (< max_movement_m meters).
+    """
+    pauses: List[Tuple[int, int]] = []
+    for i in range(1, len(pts)):
+        time_gap = pts[i].elapsed_seconds - pts[i - 1].elapsed_seconds
+        if time_gap < min_gap_s:
+            continue
+        d0 = pts[i - 1].distance_meters or 0.0
+        d1 = pts[i].distance_meters or 0.0
+        if (d1 - d0) < max_movement_m:
+            pauses.append((pts[i - 1].elapsed_seconds, pts[i].elapsed_seconds))
+    return pauses
+
+
+def _build_display_time_fn(
+    pauses: List[Tuple[int, int]],
+    min_pause_display_s: int = MIN_PAUSE_DISPLAY_S,
+) -> Tuple[Callable[[float], float], List[Tuple[float, float]]]:
+    """
+    Build a piecewise-linear function that maps real elapsed_seconds to
+    display seconds, compressing each pause to min_pause_display_s.
+
+    Returns:
+        (fn, pause_display_regions) where:
+          - fn(elapsed_s) -> display_s
+          - pause_display_regions: list of (disp_start_s, disp_end_s) for shading
+    """
+    if not pauses:
+        return lambda t: float(t), []
+
+    sorted_pauses = sorted(pauses)
+    real_pts: List[float] = [0.0]
+    disp_pts: List[float] = [0.0]
+    pause_display_regions: List[Tuple[float, float]] = []
+
+    disp_t = 0.0
+    prev_end = 0
+
+    for ps, pe in sorted_pauses:
+        # Active running time up to this pause — advances 1:1
+        disp_t += float(ps - prev_end)
+        real_pts.append(float(ps))
+        disp_pts.append(disp_t)
+
+        pause_disp_start = disp_t
+        disp_t += float(min_pause_display_s)
+        real_pts.append(float(pe))
+        disp_pts.append(disp_t)
+
+        pause_display_regions.append((pause_disp_start, disp_t))
+        prev_end = pe
+
+    # Extend far past the last pause so post-pause time maps 1:1
+    real_pts.append(real_pts[-1] + 86400.0)
+    disp_pts.append(disp_pts[-1] + 86400.0)
+
+    real_arr = np.array(real_pts, dtype=float)
+    disp_arr = np.array(disp_pts, dtype=float)
+
+    def fn(t: float) -> float:
+        return float(np.interp(float(t), real_arr, disp_arr))
+
+    return fn, pause_display_regions
+
+
+def _draw_pause_regions(
+    ax_pace,
+    ax_hr,
+    pause_display_regions: List[Tuple[float, float]],
+) -> None:
+    """Draw cross-hatched regions for compressed pause intervals."""
+    for start_s, end_s in pause_display_regions:
+        x0 = start_s / 60.0
+        x1 = end_s / 60.0
+        for ax in (ax_pace, ax_hr):
+            # Dark background
+            ax.axvspan(x0, x1, facecolor="#111111", alpha=0.55, linewidth=0, zorder=1)
+            # Cross-hatch overlay
+            ax.axvspan(x0, x1, hatch="////", facecolor="none",
+                       edgecolor="#888888", linewidth=0.5, alpha=0.7, zorder=2)
+
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -76,21 +179,30 @@ def make_run_overview_chart(report: RunReport) -> Tuple[bytes, str]:
     Two-panel overview chart (pace over time, HR over time).
     Background shading shows workout structure; dashed lines show
     median rep pace for interval workouts.
+    Paused segments are compressed to a small fixed width with cross-hatching.
 
     Returns (png_bytes, caption).
     """
     pts = report.timeseries
     lap_segs = report.lap_segments
 
+    # ── Pause detection & display-time mapping ────────────────────────────────
+    pauses = _detect_pauses(pts)
+    dt_fn, pause_display_regions = _build_display_time_fn(pauses)
+
     # Build time arrays (minutes) and metric arrays
-    t_min_pace, pace_min_mi = _timeseries_pace(pts)
-    t_min_hr, hr_vals = _timeseries_hr(pts)
+    t_min_pace_raw, pace_min_mi = _timeseries_pace(pts)
+    t_min_hr_raw, hr_vals = _timeseries_hr(pts)
+
+    # Convert raw elapsed-time arrays to display time
+    t_min_pace = [dt_fn(t * 60.0) / 60.0 for t in t_min_pace_raw]
+    t_min_hr   = [dt_fn(t * 60.0) / 60.0 for t in t_min_hr_raw]
 
     # Identify rep groups for reference lines
     rep_groups = _group_rep_laps(lap_segs)
 
-    # Total duration in minutes (for x-axis limit)
-    total_min = report.activity.duration_seconds / 60.0
+    # Total display duration in minutes (for x-axis limit)
+    total_min = dt_fn(report.activity.duration_seconds) / 60.0
 
     fig = plt.figure(figsize=(12, 9))
     fig.patch.set_facecolor("#1a1a2e")
@@ -103,13 +215,16 @@ def make_run_overview_chart(report: RunReport) -> Tuple[bytes, str]:
     _style_ax(ax_hr)
 
     # ── Segment background shading ────────────────────────────────────────────
-    _draw_segment_shading(ax_pace, ax_hr, lap_segs, total_min)
+    _draw_segment_shading(ax_pace, ax_hr, lap_segs, total_min, dt_fn)
+
+    # ── Pause regions (cross-hatched, drawn after segment shading) ────────────
+    _draw_pause_regions(ax_pace, ax_hr, pause_display_regions)
 
     # ── Target pace bands (grey fill) — drawn before the pace line ────────────
-    _draw_target_pace_bands(ax_pace, lap_segs)
+    _draw_target_pace_bands(ax_pace, lap_segs, dt_fn)
 
     # ── Segment labels along top of pace panel ────────────────────────────────
-    _draw_segment_labels(ax_pace, lap_segs, total_min)
+    _draw_segment_labels(ax_pace, lap_segs, total_min, dt_fn)
 
     # ── Pace line ─────────────────────────────────────────────────────────────
     if t_min_pace and pace_min_mi:
@@ -128,7 +243,8 @@ def make_run_overview_chart(report: RunReport) -> Tuple[bytes, str]:
         # Clip Y-axis to active-segment pace range (eliminates walk/rest outliers).
         # Use the 5th–95th percentile of run-segment points for robust bounds,
         # then add a small margin so the line never touches the edge.
-        active_paces = _active_segment_paces(pace_min_mi, t_min_pace, lap_segs)
+        # Note: use raw time for _active_segment_paces (compares against real segment windows)
+        active_paces = _active_segment_paces(pace_min_mi, t_min_pace_raw, lap_segs)
         if active_paces:
             lo = float(np.percentile(active_paces, 5))
             hi = float(np.percentile(active_paces, 95))
@@ -143,10 +259,10 @@ def make_run_overview_chart(report: RunReport) -> Tuple[bytes, str]:
 
     # ── Cross-rep median reference line (interval consistency) ────────────────
     if t_min_pace and pace_min_mi:
-        _draw_rep_reference_lines(ax_pace, rep_groups, pts)
+        _draw_rep_reference_lines(ax_pace, rep_groups, pts, dt_fn)
 
     # ── Elevation overlay on pace panel (right Y-axis) ────────────────────────
-    _draw_elevation_overlay(ax_pace, pts, report.bonk_events)
+    _draw_elevation_overlay(ax_pace, pts, report.bonk_events, dt_fn)
 
     # ── HR line ───────────────────────────────────────────────────────────────
     if t_min_hr and hr_vals:
@@ -157,7 +273,8 @@ def make_run_overview_chart(report: RunReport) -> Tuple[bytes, str]:
         ax_hr.set_ylim(bottom=max(0, min(hr_vals) - 10))
 
     # ── X-axis ────────────────────────────────────────────────────────────────
-    ax_hr.set_xlabel("Time (min)", color="#aaaaaa", fontsize=9)
+    xlabel = "Time (min, pauses compressed)" if pauses else "Time (min)"
+    ax_hr.set_xlabel(xlabel, color="#aaaaaa", fontsize=9)
     ax_pace.tick_params(labelbottom=False)   # hide x-ticks on top panel
 
     # ── Title ─────────────────────────────────────────────────────────────────
@@ -266,6 +383,9 @@ def _active_segment_paces(
     Excludes warmup, cooldown, walk, and tiny laps — these often contain very
     slow paces that blow out the Y-axis. Falls back to all points if no
     qualifying run segments exist.
+
+    NOTE: t_min must be in raw elapsed time (not display time) so comparisons
+    against seg.start/end_elapsed_s remain correct.
     """
     run_windows = [
         (seg.start_elapsed_s / 60.0, seg.end_elapsed_s / 60.0)
@@ -299,18 +419,18 @@ def _timeseries_hr(pts: List[TimeseriesPoint]):
     return t, h
 
 
-def _draw_target_pace_bands(ax_pace, lap_segs: List[LapSegment]) -> None:
+def _draw_target_pace_bands(
+    ax_pace,
+    lap_segs: List[LapSegment],
+    dt_fn: Callable[[float], float],
+) -> None:
     """
     Overlay a soft grey fill on the pace panel for each lap that has a
     structured pace target (target_pace_slow_s_per_km and target_pace_fast_s_per_km).
 
-    The band spans the lap's time window on the X-axis and the target pace
-    range on the (inverted) Y-axis.  Drawn at zorder=2 so it sits above the
-    segment shading (zorder=1) but behind the actual pace line (zorder=3).
-
-    Visual choices:
-      - Fill: light grey (#aaaaaa), alpha=0.18 — clearly visible but unobtrusive
-      - Border: dashed lines at band edges, alpha=0.45 — shows exact target limits
+    The band spans the lap's display-time window on the X-axis and the target
+    pace range on the (inverted) Y-axis.  Drawn at zorder=2 so it sits above
+    the segment shading (zorder=1) but behind the actual pace line (zorder=3).
     """
     for seg in lap_segs:
         slow = getattr(seg, "target_pace_slow_s_per_km", None)
@@ -321,8 +441,8 @@ def _draw_target_pace_bands(ax_pace, lap_segs: List[LapSegment]) -> None:
         if slow < fast:
             slow, fast = fast, slow  # swap silently if inverted
 
-        x0 = seg.start_elapsed_s / 60.0
-        x1 = seg.end_elapsed_s / 60.0
+        x0 = dt_fn(seg.start_elapsed_s) / 60.0
+        x1 = dt_fn(seg.end_elapsed_s) / 60.0
         # Convert from s/km to min/mi (the pace panel's Y units)
         y_slow = _pace_to_min_mi(slow)  # larger value = bottom of band (axis inverted)
         y_fast = _pace_to_min_mi(fast)  # smaller value = top of band
@@ -340,15 +460,20 @@ def _draw_target_pace_bands(ax_pace, lap_segs: List[LapSegment]) -> None:
         )
 
 
-def _draw_segment_shading(ax_pace, ax_hr, lap_segs: List[LapSegment],
-                          total_min: float) -> None:
+def _draw_segment_shading(
+    ax_pace,
+    ax_hr,
+    lap_segs: List[LapSegment],
+    total_min: float,
+    dt_fn: Callable[[float], float],
+) -> None:
     """Fill background of both panels by segment type. Tiny laps → 'Drills'."""
     drills_start: Optional[float] = None
     drills_end: Optional[float] = None
 
     for seg in lap_segs:
-        x0 = seg.start_elapsed_s / 60.0
-        x1 = seg.end_elapsed_s / 60.0
+        x0 = dt_fn(seg.start_elapsed_s) / 60.0
+        x1 = dt_fn(seg.end_elapsed_s) / 60.0
 
         if seg.distance_meters < MIN_LAP_DISPLAY_M:
             # Accumulate tiny laps into one drills block
@@ -378,7 +503,12 @@ def _shade_region(ax_pace, ax_hr, x0: float, x1: float,
         ax.axvspan(x0, x1, color=color, alpha=alpha, zorder=1, linewidth=0)
 
 
-def _draw_segment_labels(ax, lap_segs: List[LapSegment], total_min: float) -> None:
+def _draw_segment_labels(
+    ax,
+    lap_segs: List[LapSegment],
+    total_min: float,
+    dt_fn: Callable[[float], float],
+) -> None:
     """Draw segment name at the top of the pace panel.
 
     Run/warmup/cooldown (≥ 0.1 mi): name + distance + avg pace, teal text.
@@ -393,8 +523,10 @@ def _draw_segment_labels(ax, lap_segs: List[LapSegment], total_min: float) -> No
         if seg.distance_meters < MIN_LAP_DISPLAY_M:
             continue
 
-        seg_width_min = (seg.end_elapsed_s - seg.start_elapsed_s) / 60.0
-        x_mid = seg.start_elapsed_s / 60.0 + seg_width_min / 2.0
+        x0_display = dt_fn(seg.start_elapsed_s) / 60.0
+        x1_display = dt_fn(seg.end_elapsed_s) / 60.0
+        seg_width_min = x1_display - x0_display
+        x_mid = x0_display + seg_width_min / 2.0
         dist_mi = seg.distance_meters / 1609.344
 
         if seg.split_type == "walk_segment":
@@ -422,8 +554,12 @@ def _draw_segment_labels(ax, lap_segs: List[LapSegment], total_min: float) -> No
             prev_run_label_end_min = x_mid + seg_width_min / 2.0
 
 
-def _draw_segment_median_lines(ax, lap_segs: List[LapSegment],
-                                pts: List[TimeseriesPoint]) -> None:
+def _draw_segment_median_lines(
+    ax,
+    lap_segs: List[LapSegment],
+    pts: List[TimeseriesPoint],
+    dt_fn: Callable[[float], float],
+) -> None:
     """
     Per-rep avg-pace lines, color-coded by rep index so reps are visually
     distinguishable. Each line gets a small inline label at its left edge
@@ -437,8 +573,8 @@ def _draw_segment_median_lines(ax, lap_segs: List[LapSegment],
 
     for i, seg in enumerate(run_segs):
         color = REP_COLORS[i % len(REP_COLORS)]
-        x0 = seg.start_elapsed_s / 60.0
-        x1 = seg.end_elapsed_s / 60.0
+        x0 = dt_fn(seg.start_elapsed_s) / 60.0
+        x1 = dt_fn(seg.end_elapsed_s) / 60.0
         med = _pace_to_min_mi(seg.avg_pace_s_per_km)
         ax.hlines(med, x0, x1,
                   colors=color, linewidths=1.0,
@@ -451,8 +587,12 @@ def _draw_segment_median_lines(ax, lap_segs: List[LapSegment],
                           ec="none", alpha=0.7))
 
 
-def _draw_rep_reference_lines(ax, rep_groups: List[List[LapSegment]],
-                               pts: List[TimeseriesPoint]) -> None:
+def _draw_rep_reference_lines(
+    ax,
+    rep_groups: List[List[LapSegment]],
+    pts: List[TimeseriesPoint],
+    dt_fn: Callable[[float], float],
+) -> None:
     """
     Cross-rep consistency line per rep group. Dashed, behind the pace line.
     Color-coded per group. Label anchored to the right margin (outside data
@@ -467,8 +607,8 @@ def _draw_rep_reference_lines(ax, rep_groups: List[List[LapSegment]],
         med_pace_min_mi = _pace_to_min_mi(med_pace_s_km)
         color = REP_COLORS[gi % len(REP_COLORS)]
 
-        x0 = group[0].start_elapsed_s / 60.0
-        x1 = group[-1].end_elapsed_s / 60.0
+        x0 = dt_fn(group[0].start_elapsed_s) / 60.0
+        x1 = dt_fn(group[-1].end_elapsed_s) / 60.0
 
         # Dashed line behind the pace trace
         ax.hlines(med_pace_min_mi, x0, x1,
@@ -489,14 +629,18 @@ def _draw_rep_reference_lines(ax, rep_groups: List[List[LapSegment]],
                           ec="none", alpha=0.55))
 
 
-def _draw_elevation_overlay(ax_pace, pts: List[TimeseriesPoint],
-                             bonk_events: list) -> None:
+def _draw_elevation_overlay(
+    ax_pace,
+    pts: List[TimeseriesPoint],
+    bonk_events: list,
+    dt_fn: Callable[[float], float],
+) -> None:
     """
     Overlay elevation as a dim filled area on a right Y-axis of the pace panel.
     Bonk onset times are marked with vertical red dashed lines + a small label.
     Skipped silently if fewer than 10 elevation points are available.
     """
-    elev_pts = [(p.elapsed_seconds / 60.0, p.elevation_meters)
+    elev_pts = [(dt_fn(p.elapsed_seconds) / 60.0, p.elevation_meters)
                 for p in pts if p.elevation_meters is not None]
     if len(elev_pts) < 10:
         return
@@ -527,7 +671,7 @@ def _draw_elevation_overlay(ax_pace, pts: List[TimeseriesPoint],
 
     # Bonk markers
     for bonk in bonk_events:
-        t_bonk = bonk.elapsed_seconds_onset / 60.0
+        t_bonk = dt_fn(bonk.elapsed_seconds_onset) / 60.0
         ax_pace.axvline(t_bonk, color="#ff4444", linewidth=1.5,
                         linestyle="--", alpha=0.8, zorder=5)
         ax_pace.text(t_bonk + 0.3, 0.03, "bonk",
