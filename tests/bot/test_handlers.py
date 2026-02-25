@@ -83,9 +83,13 @@ def make_update(text: str = "", user_id: int = 1) -> MagicMock:
 def make_context(engine=None, claude=None, whisper=None) -> MagicMock:
     """Build a minimal PTB context mock with our custom bot_data."""
     ctx = MagicMock()
+    ctx.chat_data = {}
     ctx.bot_data = {
         "engine": engine,
-        "claude": claude or AsyncMock(complete=AsyncMock(return_value="Great run!")),
+        "claude": claude or MagicMock(
+            complete=AsyncMock(return_value="Great run!"),
+            complete_with_history=AsyncMock(return_value="Great run!"),
+        ),
         "whisper": whisper,
     }
     return ctx
@@ -120,10 +124,13 @@ class TestHandleLastRun:
     @pytest.mark.asyncio
     async def test_claude_is_called(self, seeded_engine):
         update = make_update()
-        claude = AsyncMock(complete=AsyncMock(return_value="Nice run!"))
+        claude = MagicMock(
+            complete=AsyncMock(return_value="Nice run!"),
+            complete_with_history=AsyncMock(return_value="Nice run!"),
+        )
         ctx = make_context(engine=seeded_engine, claude=claude)
         await handle_lastrun(update, ctx)
-        claude.complete.assert_called_once()
+        claude.complete_with_history.assert_called_once()
 
 
 class TestHandleDebrief:

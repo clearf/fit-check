@@ -32,11 +32,20 @@ from fitness.prompts.voice import build_voice_query_prompt
 from fitness.prompts.charts import make_run_overview_chart
 
 
+_TELEGRAM_MAX_LEN = 4096
+
+
 def _get_run_histories(context: ContextTypes.DEFAULT_TYPE) -> dict:
     """Return the run_histories dict from chat_data, creating it if absent."""
     if "run_histories" not in context.chat_data:
         context.chat_data["run_histories"] = {}
     return context.chat_data["run_histories"]
+
+
+async def _reply_long(update: Update, text: str) -> None:
+    """Send text, splitting into ≤4096-char chunks if needed."""
+    for i in range(0, len(text), _TELEGRAM_MAX_LEN):
+        await update.message.reply_text(text[i : i + _TELEGRAM_MAX_LEN])
 
 
 async def handle_lastrun(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -120,7 +129,7 @@ async def handle_trends(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     prompt = build_trends_prompt(list(activities))
     response = await claude.complete(prompt)
-    await update.message.reply_text(response)
+    await _reply_long(update, response)
 
 
 async def handle_sync(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -189,7 +198,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         prompt = build_voice_query_prompt(text, report)
         response = await claude.complete(prompt, system_prompt=system)
 
-    await update.message.reply_text(response)
+    await _reply_long(update, response)
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -243,7 +252,7 @@ async def _send_run_debrief(
         history.append({"role": "assistant", "content": response})
         run_histories[activity_id] = history
 
-    await update.message.reply_text(response)
+    await _reply_long(update, response)
 
 
 async def _trigger_sync_background(context: ContextTypes.DEFAULT_TYPE) -> None:

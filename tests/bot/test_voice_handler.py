@@ -75,9 +75,13 @@ def make_voice_update(audio_bytes: bytes = b"fake_audio") -> MagicMock:
 
 def make_context(engine=None, claude=None, whisper=None):
     ctx = MagicMock()
+    ctx.chat_data = {}
     ctx.bot_data = {
         "engine": engine,
-        "claude": claude or AsyncMock(complete=AsyncMock(return_value="Sounds like a great run!")),
+        "claude": claude or MagicMock(
+            complete=AsyncMock(return_value="Sounds like a great run!"),
+            complete_with_history=AsyncMock(return_value="Sounds like a great run!"),
+        ),
         "whisper": whisper or AsyncMock(transcribe=AsyncMock(return_value="I felt great on that run")),
     }
     return ctx
@@ -99,7 +103,10 @@ class TestHandleVoice:
     @pytest.mark.asyncio
     async def test_calls_claude_with_transcript(self, seeded_engine):
         update = make_voice_update()
-        claude = AsyncMock(complete=AsyncMock(return_value="Great effort!"))
+        claude = MagicMock(
+            complete=AsyncMock(return_value="Great effort!"),
+            complete_with_history=AsyncMock(return_value="Great effort!"),
+        )
         whisper = AsyncMock(transcribe=AsyncMock(return_value="Legs felt heavy"))
         ctx = make_context(engine=seeded_engine, claude=claude, whisper=whisper)
 
