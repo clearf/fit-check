@@ -19,14 +19,17 @@ Single-user Telegram bot that syncs Garmin Connect data and provides AI-powered 
 
 ## VPS Access
 
-The VPS IP is stored in the **local** `.env` as `VPS_IP`. SSH as `root` (key-based):
+VPS IP: `89.167.65.94`. SSH as `fitness` (key-based, from Claude Code Docker container):
 
 ```bash
-source .env
-ssh root@$VPS_IP
+ssh fitness@89.167.65.94
 ```
 
-The `fitness` user cannot restart services — use `root` for `systemctl` commands.
+The `fitness` user has passwordless sudo for exactly two commands:
+- `sudo /usr/bin/systemctl restart fitness-bot`
+- `sudo /usr/bin/systemctl status fitness-bot`
+
+Note: extra flags (e.g. `--no-pager`) break the sudoers match — use the commands exactly as written above.
 
 ---
 
@@ -36,7 +39,7 @@ The `fitness` user cannot restart services — use `root` for `systemctl` comman
 
 **Standard practice: every completed feature/fix is committed, pushed, and deployed immediately.**
 
-Standard commit-push-deploy flow after making changes:
+Standard commit-push-deploy flow (run directly from Claude Code):
 
 ```bash
 # 1. Commit
@@ -48,24 +51,15 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 # 2. Push
 git push
 
-# 3. Pull on VPS
-source .env
-ssh root@$VPS_IP "su - fitness -c 'cd /home/fitness/fitness && git pull'"
-
-# 4. Restart service
-ssh root@$VPS_IP "systemctl restart fitness-bot"
-
-# 5. Verify startup
-ssh root@$VPS_IP "journalctl -u fitness-bot --no-pager -n 30"
+# 3. Pull on VPS + restart + verify
+ssh fitness@89.167.65.94 "cd /home/fitness/fitness && git pull && sudo /usr/bin/systemctl restart fitness-bot && sleep 3 && sudo /usr/bin/systemctl status fitness-bot"
 ```
 
-If pip dependencies changed (new packages in `pyproject.toml`):
+If pip dependencies changed (new packages in `pyproject.toml`), install before restarting:
 
 ```bash
-ssh root@$VPS_IP "su - fitness -c 'cd /home/fitness/fitness && .venv/bin/pip install -e . -q'"
+ssh fitness@89.167.65.94 "cd /home/fitness/fitness && .venv/bin/pip install -e . -q"
 ```
-
-Then restart and verify as above.
 
 ---
 
