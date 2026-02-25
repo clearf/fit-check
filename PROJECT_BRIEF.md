@@ -1,6 +1,6 @@
 # fit-check — Project Brief
 
-> **Purpose of this document**: Orient a new Claude Code session quickly. Read this first, then `OPERATIONS.md` for deploy procedures.
+> **Purpose of this document**: Deep architecture reference. Read `CLAUDE.md` first, then this file for architecture details and `OPERATIONS.md` for VPS operations.
 
 ---
 
@@ -236,12 +236,4 @@ Roughly in priority order:
 
 ## Deploy
 
-VPS IP is in `.env` as `VPS_IP`. Standard deploy:
-
-```bash
-export VPS_IP=$(grep VPS_IP .env | cut -d= -f2)
-git push && ssh fitness@$VPS_IP "cd ~/fitness && git pull && .venv/bin/pip install -e . && sudo -n systemctl restart fitness-bot"
-ssh fitness@$VPS_IP "journalctl -u fitness-bot --no-pager -n 30"
-```
-
-See `OPERATIONS.md` for full details including Garmin token refresh procedure.
+Use the `/deploy` skill. See `OPERATIONS.md` for full details including Garmin token refresh procedure.
