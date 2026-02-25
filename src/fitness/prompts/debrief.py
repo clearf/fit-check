@@ -168,8 +168,10 @@ def build_debrief_prompt(
         "(e.g., 'Run 3', 'Walk 2') and elapsed times when citing the data. "
         "Use the per-segment timeseries to comment on intra-segment dynamics "
         "(e.g., HR rising within a run interval, pace fading mid-rep, HR "
-        "recovery during walk breaks). Ask one follow-up question if relevant "
-        "context is missing._"
+        "recovery during walk breaks). "
+        "Segments tagged (structural transition) are brief connectors between workout phases. "
+        "Skip them in your analysis unless their data represents a meaningful run segment. "
+        "Ask one follow-up question if relevant context is missing._"
     )
 
     return "\n".join(lines)
@@ -262,6 +264,8 @@ def _format_lap_segments(report: RunReport) -> str:
             parts.append("  (warmup)")
         elif is_cooldown:
             parts.append("  (cooldown)")
+        elif seg.is_transitional():
+            parts.append("  (structural transition — brief connector, not a workout component)")
 
         # Bonk annotation
         bonk = _find_bonk_for_segment(seg, report.bonk_events)

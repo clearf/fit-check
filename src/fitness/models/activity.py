@@ -100,6 +100,7 @@ class ActivitySplit(SQLModel, table=True):
     wkt_step_index: Optional[int] = None            # 0-based index into workout steps
     target_pace_slow_s_per_km: Optional[float] = None  # slow boundary of target pace band
     target_pace_fast_s_per_km: Optional[float] = None  # fast boundary of target pace band
+    wkt_step_type: Optional[str] = None             # stepTypeKey from workout def, e.g. "recovery", "interval", "other"
 
     # Relationship
     activity: Optional[Activity] = Relationship(back_populates="splits")

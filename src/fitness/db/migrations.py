@@ -24,6 +24,7 @@ def run_migrations(engine) -> None:
         _add_column_if_missing(conn, "activitysplit", "wkt_step_index", "INTEGER")
         _add_column_if_missing(conn, "activitysplit", "target_pace_slow_s_per_km", "REAL")
         _add_column_if_missing(conn, "activitysplit", "target_pace_fast_s_per_km", "REAL")
+        _add_column_if_missing(conn, "activitysplit", "wkt_step_type", "TEXT")
 
         # Activity: cached workout definition JSON from Garmin workout service
         _add_column_if_missing(conn, "activity", "workout_definition_json", "TEXT")

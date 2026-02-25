@@ -370,6 +370,39 @@ class TestBuildDebriefPrompt:
         result = build_debrief_prompt(report)
         assert "Workout Intent" not in result
 
+    def test_transitional_segment_annotated_in_prompt(self):
+        """Segments with wkt_step_type='other' get a (structural transition) annotation."""
+        seg = LapSegment(
+            label="Run 1",
+            split_type="run_segment",
+            start_elapsed_s=0,
+            end_elapsed_s=30,
+            duration_seconds=30.0,
+            distance_meters=50.0,
+            avg_pace_s_per_km=600.0,
+            avg_hr=130.0,
+            hr_zone_distribution={1: 0.5, 2: 0.5, 3: 0.0, 4: 0.0, 5: 0.0},
+            wkt_step_type="other",
+        )
+        report = make_run_report(lap_segments=[seg])
+        result = build_debrief_prompt(report)
+        # The per-segment annotation uses this specific phrase
+        assert "not a workout component" in result
+
+    def test_non_transitional_segment_not_annotated(self):
+        """Regular run segments do not get the per-segment (structural transition) annotation."""
+        seg = make_lap_segment(label="Run 1")
+        report = make_run_report(lap_segments=[seg])
+        result = build_debrief_prompt(report)
+        # Per-segment annotation "not a workout component" only appears for transitional segs
+        assert "not a workout component" not in result
+
+    def test_coaching_instruction_mentions_structural_transition(self):
+        """The closing coaching instruction mentions structural transition segments."""
+        report = make_run_report()
+        result = build_debrief_prompt(report)
+        assert "structural transition" in result
+
 
 class TestBuildDebriefSystemPrompt:
     def test_returns_string(self):

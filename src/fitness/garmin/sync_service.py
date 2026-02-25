@@ -253,6 +253,7 @@ class GarminSyncService:
                     targets = step_targets[wkt_idx]
                     fields["target_pace_slow_s_per_km"] = targets.get("target_pace_slow_s_per_km")
                     fields["target_pace_fast_s_per_km"] = targets.get("target_pace_fast_s_per_km")
+                    fields["wkt_step_type"] = targets.get("step_type_key")
 
                 split = ActivitySplit(
                     activity_id=activity.id,

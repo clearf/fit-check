@@ -49,9 +49,16 @@ class LapSegment:
     target_pace_slow_s_per_km: Optional[float] = None   # slow end of pace band (more s/km)
     target_pace_fast_s_per_km: Optional[float] = None   # fast end of pace band (fewer s/km)
 
+    # Workout step type from Garmin workout definition (None for unstructured runs)
+    wkt_step_type: Optional[str] = None
+
     @property
     def distance_miles(self) -> float:
         return self.distance_meters / METERS_PER_MILE
+
+    def is_transitional(self) -> bool:
+        """True for 'other'-type steps (structural connectors between drill phases)."""
+        return self.wkt_step_type == "other"
 
     def is_active(self) -> bool:
         """True for run/warmup/cooldown laps (eligible for bonk detection baseline).
@@ -166,6 +173,9 @@ def build_lap_segments(
             label = "Warmup"
         elif i == heuristic_cooldown_idx:
             label = "Cooldown"
+        elif sp.split_type == "run_segment" and getattr(sp, "wkt_step_type", None) == "recovery":
+            walk_counter += 1
+            label = f"Recovery {walk_counter}"
         elif sp.split_type == "walk_segment":
             walk_counter += 1
             label = f"Walk {walk_counter}"
@@ -185,6 +195,7 @@ def build_lap_segments(
             hr_zone_distribution=zones,
             target_pace_slow_s_per_km=getattr(sp, "target_pace_slow_s_per_km", None),
             target_pace_fast_s_per_km=getattr(sp, "target_pace_fast_s_per_km", None),
+            wkt_step_type=getattr(sp, "wkt_step_type", None),
         ))
 
     return segments

@@ -305,3 +305,29 @@ class TestWorkoutSync:
         for sp in splits:
             assert sp.target_pace_slow_s_per_km is None
             assert sp.target_pace_fast_s_per_km is None
+
+    @pytest.mark.asyncio
+    async def test_interval_splits_have_wkt_step_type(self, service, engine):
+        """ACTIVE splits with wktStepIndex=9 (interval step) get wkt_step_type populated."""
+        await service.sync_activity("17345678901")
+        with Session(engine) as s:
+            splits = s.exec(
+                select(ActivitySplit).where(ActivitySplit.wkt_step_index == 9)
+            ).all()
+        assert len(splits) > 0
+        for sp in splits:
+            assert sp.wkt_step_type is not None
+
+    @pytest.mark.asyncio
+    async def test_wkt_step_type_none_when_workout_fetch_fails(self, engine):
+        """When get_workout() fails, wkt_step_type is None on all splits."""
+        client = make_mock_client()
+        client.get_workout = AsyncMock(side_effect=Exception("network error"))
+        service = GarminSyncService(client=client, engine=engine)
+        await service.sync_activity("17345678901")
+
+        with Session(engine) as s:
+            splits = s.exec(select(ActivitySplit)).all()
+        assert len(splits) > 0
+        for sp in splits:
+            assert sp.wkt_step_type is None

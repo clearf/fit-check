@@ -216,6 +216,128 @@ class TestLapSegmentLabeling:
         assert segs[-1].label == "Cooldown"
 
 
+class TestLapSegmentWktStepType:
+    """Tests for wkt_step_type field: recovery labeling and is_transitional()."""
+
+    def test_run_segment_with_recovery_step_type_labeled_recovery(self):
+        """run_segment with wkt_step_type='recovery' should be labeled 'Recovery N'.
+        Uses distance > WARMUP_COOLDOWN_DISTANCE_M to avoid warmup heuristic."""
+        # Place the recovery between two normal-sized run segments so heuristics
+        # don't override: first/last splits are large enough to avoid warmup/cooldown.
+        splits = [
+            ActivitySplit(
+                id=0, activity_id=1, user_id=1, split_index=0,
+                split_type="run_segment", start_elapsed_seconds=0,
+                duration_seconds=300.0, distance_meters=1200.0,
+                avg_hr=165.0, avg_pace_seconds_per_km=250.0,
+            ),
+            ActivitySplit(
+                id=1, activity_id=1, user_id=1, split_index=1,
+                split_type="run_segment", start_elapsed_seconds=300,
+                duration_seconds=180.0, distance_meters=1200.0,
+                avg_hr=120.0, avg_pace_seconds_per_km=450.0,
+                wkt_step_type="recovery",
+            ),
+        ]
+        segs = build_lap_segments(splits, [])
+        recovery_seg = segs[1]
+        assert recovery_seg.label == "Recovery 1"
+
+    def test_multiple_recovery_segments_labeled_sequentially(self):
+        """Multiple recovery splits should be labeled Recovery 1, Recovery 2, ..."""
+        # Use distances >= WARMUP_COOLDOWN_DISTANCE_M (1000m) to avoid heuristic
+        # warmup/cooldown labeling on any segment.
+        splits = [
+            ActivitySplit(
+                id=0, activity_id=1, user_id=1, split_index=0,
+                split_type="run_segment", start_elapsed_seconds=0,
+                duration_seconds=300.0, distance_meters=1200.0,
+                avg_hr=165.0, avg_pace_seconds_per_km=250.0,
+            ),
+            ActivitySplit(
+                id=1, activity_id=1, user_id=1, split_index=1,
+                split_type="run_segment", start_elapsed_seconds=300,
+                duration_seconds=180.0, distance_meters=1200.0,
+                avg_hr=120.0, avg_pace_seconds_per_km=450.0,
+                wkt_step_type="recovery",
+            ),
+            ActivitySplit(
+                id=2, activity_id=1, user_id=1, split_index=2,
+                split_type="run_segment", start_elapsed_seconds=480,
+                duration_seconds=300.0, distance_meters=1200.0,
+                avg_hr=168.0, avg_pace_seconds_per_km=250.0,
+            ),
+            ActivitySplit(
+                id=3, activity_id=1, user_id=1, split_index=3,
+                split_type="run_segment", start_elapsed_seconds=780,
+                duration_seconds=180.0, distance_meters=1200.0,
+                avg_hr=118.0, avg_pace_seconds_per_km=450.0,
+                wkt_step_type="recovery",
+            ),
+        ]
+        segs = build_lap_segments(splits, [])
+        labels = [s.label for s in segs]
+        assert labels == ["Run 1", "Recovery 1", "Run 2", "Recovery 2"]
+
+    def test_run_segment_without_recovery_type_still_labeled_run(self):
+        """run_segment with no wkt_step_type should still be labeled 'Run N'."""
+        sp = ActivitySplit(
+            id=0, activity_id=1, user_id=1,
+            split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=600.0, distance_meters=1600.0,
+            avg_hr=155.0, avg_pace_seconds_per_km=375.0,
+        )
+        segs = build_lap_segments([sp], [])
+        assert segs[0].label == "Run 1"
+
+    def test_is_transitional_true_for_other_step_type(self):
+        """LapSegment.is_transitional() returns True when wkt_step_type='other'."""
+        sp = ActivitySplit(
+            id=0, activity_id=1, user_id=1,
+            split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=30.0, distance_meters=50.0,
+            avg_hr=130.0, avg_pace_seconds_per_km=600.0,
+            wkt_step_type="other",
+        )
+        segs = build_lap_segments([sp], [])
+        assert segs[0].is_transitional() is True
+
+    def test_is_transitional_false_for_normal_run(self):
+        """LapSegment.is_transitional() returns False for a regular run_segment."""
+        sp = ActivitySplit(
+            id=0, activity_id=1, user_id=1,
+            split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=300.0, distance_meters=800.0,
+            avg_hr=165.0, avg_pace_seconds_per_km=283.0,
+            wkt_step_type="interval",
+        )
+        segs = build_lap_segments([sp], [])
+        assert segs[0].is_transitional() is False
+
+    def test_is_transitional_false_when_wkt_step_type_none(self):
+        """LapSegment.is_transitional() returns False when wkt_step_type is None."""
+        sp = ActivitySplit(
+            id=0, activity_id=1, user_id=1,
+            split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=300.0, distance_meters=800.0,
+            avg_hr=165.0, avg_pace_seconds_per_km=283.0,
+        )
+        segs = build_lap_segments([sp], [])
+        assert segs[0].is_transitional() is False
+
+    def test_wkt_step_type_passed_through_to_segment(self):
+        """wkt_step_type is propagated from ActivitySplit to LapSegment."""
+        sp = ActivitySplit(
+            id=0, activity_id=1, user_id=1,
+            split_index=0, split_type="run_segment",
+            start_elapsed_seconds=0, duration_seconds=300.0, distance_meters=800.0,
+            avg_hr=165.0, avg_pace_seconds_per_km=283.0,
+            wkt_step_type="interval",
+        )
+        segs = build_lap_segments([sp], [])
+        assert segs[0].wkt_step_type == "interval"
+
+
 class TestLapSegmentTargetPace:
     """LapSegment passes target pace fields through from ActivitySplit."""
 
