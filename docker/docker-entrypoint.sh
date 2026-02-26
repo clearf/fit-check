@@ -48,6 +48,14 @@ if env | grep -q '^PROJECT_'; then
   echo ".env written."
 fi
 
+# ── Write a default .screenrc if none is mounted ─────────────────────────────
+# Sets a proper TERM so Claude's TUI renders correctly inside screen.
+if [ ! -f "/home/claude/.screenrc" ]; then
+  cat > "/home/claude/.screenrc" <<'EOF'
+term xterm-256color
+EOF
+fi
+
 # ── Configure Claude Code for permissive / auto-accept operation ──────────────
 CLAUDE_CONFIG_DIR="/home/claude/.claude"
 mkdir -p "$CLAUDE_CONFIG_DIR"
@@ -64,7 +72,8 @@ cat > "$CLAUDE_CONFIG_DIR/settings.json" <<'EOF'
       "Grep(*)"
     ],
     "deny": []
-  }
+  },
+  "bypassPermissionsModeAccept": true
 }
 EOF
 
@@ -72,7 +81,7 @@ EOF
 # API key mode: if ANTHROPIC_API_KEY is set, write it to ~/.claude.json directly.
 # Account login mode: omit ANTHROPIC_API_KEY and mount your host ~/.claude.json
 #   as a volume (see docker-compose.yml). Claude Code will use your OAuth session.
-if [ -n "$ANTHROPIC_API_KEY" ]; then
+if [ -n "$ANTHROPIC_API_KEY" ] && { [ ! -e "/home/claude/.claude.json" ] || [ -w "/home/claude/.claude.json" ]; }; then
   echo "Using API key authentication."
   cat > "/home/claude/.claude.json" <<EOF
 {
@@ -81,7 +90,7 @@ if [ -n "$ANTHROPIC_API_KEY" ]; then
 }
 EOF
 elif [ -f "/home/claude/.claude.json" ]; then
-  echo "Using account login credentials from mounted ~/.claude.json."
+  echo "Using mounted ~/.claude.json credentials (account login or read-only API key file)."
 else
   echo "WARNING: No ANTHROPIC_API_KEY set and no ~/.claude.json found." >&2
   echo "         Set ANTHROPIC_API_KEY in .env.docker, or mount your host" >&2

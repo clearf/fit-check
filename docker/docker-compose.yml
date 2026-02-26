@@ -22,14 +22,16 @@ services:
           memory: 2g
           cpus: "1.5"
 
-    # ── Authentication volumes ─────────────────────────────────────────────────
-    # Account login mode: uncomment the line below to mount your host Claude
-    # credentials into the container. Run `claude login` on the host first.
-    # Leave commented out when using ANTHROPIC_API_KEY in .env.docker instead.
-
-    volumes:
-       - ~/.claude.json:/home/claude/.claude.json:ro
-       - ~/.screenrc:/home/claude/.screenrc:ro
+    # ── Optional volume mounts ─────────────────────────────────────────────────
+    # Uncomment lines below only if the source files exist on the host.
+    # Docker will create directories (not files) for missing paths, breaking things.
+    #
+    # Account login mode (Option B auth): requires `claude login` on host first.
+    # ~/.screenrc: only mount if you have a screenrc on this machine.
+    volumes: []
+    # volumes:
+    #   - ~/.claude.json:/home/claude/.claude.json:ro
+    #   - ~/.screenrc:/home/claude/.screenrc:ro
 
     # Restart policy: keep running until explicitly stopped.
     # This allows detaching from screen and reattaching from any terminal.

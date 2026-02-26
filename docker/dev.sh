@@ -48,11 +48,14 @@ for i in $(seq 1 5); do
   sleep 1
 done
 
-# ── Attach (or create a new session if it doesn't exist) ──────────────────────
+# ── Wipe any dead sessions ─────────────────────────────────────────────────────
+docker exec "$CONTAINER" screen -wipe 2>/dev/null || true
+
+# ── Attach (or create a new session if none is alive) ─────────────────────────
 echo "Tip: use Ctrl+A d to detach (keeps session alive), not ^D"
 if docker exec "$CONTAINER" screen -list 2>/dev/null | grep -q "$SCREEN_SESSION"; then
   exec docker exec -it "$CONTAINER" screen -rd "$SCREEN_SESSION"
 else
   echo "No existing session — creating new screen session '$SCREEN_SESSION'..."
-  exec docker exec -it "$CONTAINER" screen -S "$SCREEN_SESSION"
+  exec docker exec -it "$CONTAINER" screen -S "$SCREEN_SESSION" bash
 fi

@@ -16,8 +16,11 @@ RUN apt-get update && apt-get install -y \
 # Install Claude Code CLI globally
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create a non-root user for running Claude
-RUN useradd -m -s /bin/bash claude
+# Repurpose the existing 'node' user (UID 1000) as 'claude'.
+# UID 1000 matches the typical Linux host user so volume-mounted files
+# (e.g. ~/.claude.json, ~/.screenrc) are readable without chmod.
+RUN usermod -l claude -d /home/claude -m -s /bin/bash node && \
+    groupmod -n claude node
 
 # Set up SSH directory for git operations (as root, then fix ownership)
 RUN mkdir -p /home/claude/.ssh && \
@@ -31,6 +34,7 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV EDITOR=nvim
+ENV SHELL=/bin/bash
 
 USER claude
 WORKDIR /home/claude
