@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     python3-venv \
     openssh-client \
     neovim \
+    screen \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code CLI globally

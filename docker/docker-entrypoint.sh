@@ -3,11 +3,6 @@ set -e
 exec 2>&1  # redirect stderr to stdout so we can see errors
 
 # ── Validate required environment variables ───────────────────────────────────
-if [ -z "$ANTHROPIC_API_KEY" ]; then
-  echo "ERROR: ANTHROPIC_API_KEY is not set." >&2
-  exit 1
-fi
-
 if [ -z "$GIT_REPO_URL" ]; then
   echo "ERROR: GIT_REPO_URL is not set (e.g. git@github.com:user/repo.git)" >&2
   exit 1
@@ -73,23 +68,36 @@ cat > "$CLAUDE_CONFIG_DIR/settings.json" <<'EOF'
 }
 EOF
 
-# ── Configure Claude Code to skip login and use API key directly ──────────────
-# Write ~/.claude.json to tell Claude Code to use the API key directly,
-# bypassing the login flow entirely.
-cat > "/home/claude/.claude.json" <<EOF
+# ── Configure Claude Code authentication ──────────────────────────────────────
+# API key mode: if ANTHROPIC_API_KEY is set, write it to ~/.claude.json directly.
+# Account login mode: omit ANTHROPIC_API_KEY and mount your host ~/.claude.json
+#   as a volume (see docker-compose.yml). Claude Code will use your OAuth session.
+if [ -n "$ANTHROPIC_API_KEY" ]; then
+  echo "Using API key authentication."
+  cat > "/home/claude/.claude.json" <<EOF
 {
   "hasCompletedOnboarding": true,
   "primaryApiKey": "${ANTHROPIC_API_KEY}"
 }
 EOF
+elif [ -f "/home/claude/.claude.json" ]; then
+  echo "Using account login credentials from mounted ~/.claude.json."
+else
+  echo "WARNING: No ANTHROPIC_API_KEY set and no ~/.claude.json found." >&2
+  echo "         Set ANTHROPIC_API_KEY in .env.docker, or mount your host" >&2
+  echo "         ~/.claude.json into the container (see docker-compose.yml)." >&2
+fi
 
-# ── Launch Claude Code ────────────────────────────────────────────────────────
-# If a CLAUDE_PROMPT is set, run non-interactively with --print
-# Otherwise, drop into interactive mode
+# ── Launch ───────────────────────────────────────────────────────────────────
+# Non-interactive: run Claude directly with a prompt and exit.
+# Interactive: start a screen session — open new windows with Ctrl+A c and
+#   run `claude --dangerously-skip-permissions` in each one.
 if [ -n "$CLAUDE_PROMPT" ]; then
   echo "Running Claude Code non-interactively..."
   exec claude --dangerously-skip-permissions -p "$CLAUDE_PROMPT"
 else
-  echo "Starting Claude Code in interactive mode..."
-  exec claude --dangerously-skip-permissions
+  echo "Starting detached screen session 'dev'..."
+  screen -dmS dev
+  echo "Attach with: docker exec -it claude-fitness screen -r dev"
+  exec tail -f /dev/null
 fi

@@ -26,14 +26,31 @@ cp .env.docker.example .env.docker
 ```
 
 Edit `.env.docker` and fill in:
-- `ANTHROPIC_API_KEY` — your Anthropic API key
 - `GIT_REPO_URL` — SSH URL of the repo (e.g. `git@github.com:user/fitness.git`)
 - `GIT_SSH_PRIVATE_KEY` — contents of `~/.ssh/claude_docker` (the private key)
 - `PROJECT_*` — all variables your project's `.env` needs
 
 For `GIT_SSH_PRIVATE_KEY`, paste the private key with literal newlines — the entrypoint handles it correctly.
 
-### 3. Build the image
+### 3. Choose an authentication method
+
+**Option A — API key** (direct Anthropic billing):
+
+Set `ANTHROPIC_API_KEY=sk-ant-...` in `.env.docker`. No other changes needed.
+
+**Option B — Claude account login** (uses your Claude.ai subscription):
+
+1. Log in on the host machine: `claude login`
+2. Leave `ANTHROPIC_API_KEY` commented out in `.env.docker`
+3. In `docker-compose.yml`, replace `volumes: []` with:
+   ```yaml
+   volumes:
+     - ~/.claude.json:/home/claude/.claude.json:ro
+   ```
+
+The container will use the OAuth session from your host `~/.claude.json`.
+
+### 4. Build the image
 
 ```bash
 docker compose build
@@ -41,30 +58,58 @@ docker compose build
 
 ## Usage
 
-### Interactive session
+### Start the container
 
 ```bash
-docker compose run --rm claude
+docker compose up -d
 ```
 
-Claude launches in interactive mode inside the container. It has cloned the repo and written the project `.env`. Type your task and Claude will work autonomously.
+This starts the container in the background. It clones the repo, writes the project `.env`, and creates a detached screen session named `dev`. The container keeps running until you explicitly stop it — you can disconnect from SSH and reconnect later.
+
+### Attach to the screen session
+
+```bash
+docker exec -it claude-fitness screen -r dev
+```
+
+From inside screen, run Claude in any window:
+
+```bash
+claude --dangerously-skip-permissions
+```
+
+Use normal screen shortcuts to manage windows:
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+A c` | New window |
+| `Ctrl+A n` / `Ctrl+A p` | Next / previous window |
+| `Ctrl+A "` | List windows |
+| `Ctrl+A d` | Detach (container keeps running) |
+
+### Stop the container
+
+```bash
+docker compose down
+```
 
 ### Non-interactive (one-shot) task
-
-Set `CLAUDE_PROMPT` in `.env.docker` (or inline):
 
 ```bash
 CLAUDE_PROMPT="Run tests and fix any failures, then commit and push." \
   docker compose run --rm claude
 ```
 
-### Restart a fresh session (re-clone)
+### Fresh session (re-clone)
+
+Stop and remove the container, then start again:
 
 ```bash
-docker compose run --rm claude
+docker compose down
+docker compose up -d
 ```
 
-Each `run` starts a fresh container. The repo is re-cloned (or pulled if the image layer cached it) every time.
+The repo is re-cloned on each fresh start.
 
 ## How it works
 
@@ -73,7 +118,8 @@ Each `run` starts a fresh container. The repo is re-cloned (or pulled if the ima
    - Clones (or pulls) the git repo
    - Writes a `.env` file from `PROJECT_*` variables
    - Writes a permissive `~/.claude/settings.json`
-   - Launches `claude --dangerously-skip-permissions`
+   - Starts a detached `screen` session named `dev` and keeps the container alive
+   - Attach any time with `docker exec -it claude-fitness screen -r dev`
 
 2. **Permissions**: Claude is configured to auto-allow all Bash, file read/write, and search operations. No approval prompts.
 
